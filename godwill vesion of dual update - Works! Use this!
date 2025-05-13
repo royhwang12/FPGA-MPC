@@ -82,10 +82,11 @@ module dual_update #(
   // Pack outputs into flattened vectors
   always_comb begin
     for (int i = 0; i < CONTROL_DIM; i++) begin
-      y_out_flat[i*W +: W] = y_out[i];
+      y_out_flat[(i)*W +: W] = y_out[i];
     end
+//y_out_flat[(CONTROL_DIM-1-i)*W +: W] = y_out[i];
     for (int i = 0; i < STATE_DIM; i++) begin
-      g_out_flat[i*W +: W] = g_out[i];
+      g_out_flat[(i)*W +: W] = g_out[i];
     end
   end
 

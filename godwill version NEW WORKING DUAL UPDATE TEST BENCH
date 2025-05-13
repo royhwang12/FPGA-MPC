@@ -1,0 +1,142 @@
+`timescale 1ns/1ps
+
+module tb_dual_update;
+  localparam int STATE_DIM   = 12;
+  localparam int CONTROL_DIM = 4;
+  localparam int W           = 16;
+
+  logic clk;
+  logic reset;
+  logic start;
+  logic done;
+
+  // Unflattened versions (for easy initialization and inspection)
+  logic signed [W-1:0] x_k   [STATE_DIM];
+  logic signed [W-1:0] v_k   [STATE_DIM];
+  logic signed [W-1:0] g_k   [STATE_DIM];
+
+  logic signed [W-1:0] u_k   [CONTROL_DIM];
+  logic signed [W-1:0] z_k   [CONTROL_DIM];
+  logic signed [W-1:0] y_k   [CONTROL_DIM];
+
+  logic signed [W-1:0] y_out [CONTROL_DIM];
+  logic signed [W-1:0] g_out [STATE_DIM];
+
+  // Flattened signals for DUT interface
+  logic signed [W*CONTROL_DIM-1:0] u_k_flat;
+  logic signed [W*CONTROL_DIM-1:0] z_k_flat;
+  logic signed [W*CONTROL_DIM-1:0] y_k_flat;
+
+  logic signed [W*STATE_DIM-1:0]   x_k_flat;
+  logic signed [W*STATE_DIM-1:0]   v_k_flat;
+  logic signed [W*STATE_DIM-1:0]   g_k_flat;
+
+  logic signed [W*CONTROL_DIM-1:0] y_out_flat;
+  logic signed [W*STATE_DIM-1:0]   g_out_flat;
+
+  // DUT instantiation
+  dual_update #(
+    .STATE_DIM  (STATE_DIM),
+    .CONTROL_DIM(CONTROL_DIM),
+    .W          (W)
+  ) dut (
+    .clk    (clk),
+    .reset  (reset),
+    .start  (start),
+    .u_k_flat(u_k_flat),
+    .z_k_flat(z_k_flat),
+    .y_k_flat(y_k_flat),
+    .x_k_flat(x_k_flat),
+    .v_k_flat(v_k_flat),
+    .g_k_flat(g_k_flat),
+    .y_out_flat(y_out_flat),
+    .g_out_flat(g_out_flat),
+    .done   (done)
+  );
+
+  // Clock generation
+  initial clk = 0;
+  always #5 clk = ~clk;
+
+  // Test sequence
+  initial begin
+    integer i;
+
+    reset = 1;
+    start = 0;
+    #20;
+    reset = 0;
+
+    // Initialize values
+    for (i = 0; i < CONTROL_DIM; i++) begin
+      u_k[i] = i + 1;
+      z_k[i] = CONTROL_DIM - i;
+      y_k[i] = 0;
+    end
+
+    for (i = 0; i < STATE_DIM; i++) begin
+      x_k[i] = i + 1;
+      v_k[i] = STATE_DIM - i;
+      g_k[i] = 0;
+    end
+
+    // Flatten inputs
+    for (i = 0; i < CONTROL_DIM; i++) begin
+      u_k_flat[i*W +: W] = u_k[i];
+      z_k_flat[i*W +: W] = z_k[i];
+      y_k_flat[i*W +: W] = y_k[i];
+    end
+    for (i = 0; i < STATE_DIM; i++) begin
+      x_k_flat[i*W +: W] = x_k[i];
+      v_k_flat[i*W +: W] = v_k[i];
+      g_k_flat[i*W +: W] = g_k[i];
+    end
+
+    @(posedge clk);
+    start = 1;
+    @(posedge clk);
+    start = 0;
+
+    wait (done);
+    #0;
+    // Unpack outputs for readability
+    for (i = 0; i < CONTROL_DIM; i++) begin
+      y_out[i] = y_out_flat[(i)*W +: W];
+    end
+    for (i = 0; i < STATE_DIM; i++) begin
+      g_out[i] = g_out_flat[(i)*W +: W];
+    end
+
+    // Display results
+    $display("--- y_out (control dual) ---");
+    for (i = 0; i < CONTROL_DIM; i++)
+      $display("y_out[%0d] = %0d", i, y_out[i]);
+
+    $display("--- g_out (state dual) ---");
+    for (i = 0; i < STATE_DIM; i++)
+      $display("g_out[%0d] = %0d", i, g_out[i]);
+
+    #20 $finish;
+  end
+
+
+/*
+    // Print each 16-bit chunk of y_out_flat in hex, MSB first
+    $write("y_out_flat =");
+    for (int j = CONTROL_DIM-1; j >= 0; j--) begin
+      $write(" %h", y_out_flat[j*W +: W]);
+    end
+    $display("");
+
+    // Print each 16-bit chunk of g_out_flat in hex, MSB first
+    $write("g_out_flat =");
+    for (int k = STATE_DIM-1; k >= 0; k--) begin
+      $write(" %h", g_out_flat[k*W +: W]);
+    end
+    $display("");
+
+    #20 $finish;
+end
+*/
+
+endmodule

@@ -7,10 +7,10 @@ module slack_update #(
   input  logic                   reset,
   input  logic                   start,
 
-  input  logic signed [W-1:0]    x_k   [STATE_DIM],
-  input  logic signed [W-1:0]    y_k   [STATE_DIM],
-  input  logic signed [W-1:0]    u_k   [CONTROL_DIM],
-  input  logic signed [W-1:0]    g_k   [CONTROL_DIM],
+  input  var logic signed [W-1:0]    x_k   [STATE_DIM],
+  input  var logic signed [W-1:0]    y_k   [STATE_DIM],
+  input  var logic signed [W-1:0]    u_k   [CONTROL_DIM],
+  input  var logic signed [W-1:0]    g_k   [CONTROL_DIM],
 
   input  logic signed [W-1:0]    x_min,
   input  logic signed [W-1:0]    x_max,
@@ -62,7 +62,3 @@ module slack_update #(
   end
 
 endmodule
-
-
-
-

@@ -1,6 +1,6 @@
 module slack_update #(
-  parameter int STATE_DIM   = 6,
-  parameter int CONTROL_DIM = 12,
+  parameter int STATE_DIM   = 12,
+  parameter int CONTROL_DIM = 4,
   parameter int W           = 16
 )(
   input  logic                   clk,

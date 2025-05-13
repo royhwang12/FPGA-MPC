@@ -1,8 +1,8 @@
 `timescale 1ns/1ps
 
 module tb_dual_update;
-  localparam int STATE_DIM   = 6;
-  localparam int CONTROL_DIM = 12;
+  localparam int STATE_DIM   = 12;
+  localparam int CONTROL_DIM = 4;
   localparam int W           = 16;
 
   logic clk;
@@ -10,17 +10,19 @@ module tb_dual_update;
   logic start;
   logic done;
 
-  logic signed [W-1:0] u_k   [STATE_DIM];
-  logic signed [W-1:0] z_k   [STATE_DIM];
-  logic signed [W-1:0] y_k   [STATE_DIM];
+  logic signed [W-1:0] x_k   [STATE_DIM];
+  logic signed [W-1:0] v_k   [STATE_DIM];
+  logic signed [W-1:0] g_k   [STATE_DIM];
 
-  logic signed [W-1:0] x_k   [CONTROL_DIM];
-  logic signed [W-1:0] v_k   [CONTROL_DIM];
-  logic signed [W-1:0] g_k   [CONTROL_DIM];
+  logic signed [W-1:0] u_k   [CONTROL_DIM];
+  logic signed [W-1:0] z_k   [CONTROL_DIM];
+  logic signed [W-1:0] y_k   [CONTROL_DIM];
+
+  
 
   // DUT outputs
-  logic signed [W-1:0] y_out [STATE_DIM];
-  logic signed [W-1:0] g_out [CONTROL_DIM];
+  logic signed [W-1:0] y_out [CONTROL_DIM];
+  logic signed [W-1:0] g_out [STATE_DIM];
 
   dual_update #(
     .STATE_DIM  (STATE_DIM),
@@ -52,15 +54,15 @@ module tb_dual_update;
     #20;
     reset = 0;
 
-    for (i = 0; i < STATE_DIM; i++) begin
+    for (i = 0; i < CONTROL_DIM; i++) begin
       u_k[i] = i + 1;          
-      z_k[i] = STATE_DIM - i; 
+      z_k[i] = CONTROL_DIM - i; 
       y_k[i] = 0;             
     end
 
-    for (i = 0; i < CONTROL_DIM; i++) begin
+    for (i = 0; i < STATE_DIM; i++) begin
       x_k[i] = i + 1;              
-      v_k[i] = CONTROL_DIM - i;     
+      v_k[i] = STATE_DIM - i;     
       g_k[i] = 0;             
     end
 
@@ -72,11 +74,11 @@ module tb_dual_update;
     wait (done);
 
     $display("--- y_out (state dual) ---");
-    for (i = 0; i < STATE_DIM; i++)
+    for (i = 0; i < CONTROL_DIM; i++)
       $display("y_out[%0d] = %0d", i, y_out[i]);
 
     $display("--- g_out (control dual) ---");
-    for (i = 0; i < CONTROL_DIM; i++)
+    for (i = 0; i < STATE_DIM; i++)
       $display("g_out[%0d] = %0d", i, g_out[i]);
 
     #20 $finish;

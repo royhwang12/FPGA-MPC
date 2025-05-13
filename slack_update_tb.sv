@@ -2,8 +2,8 @@
 `include "slack_update.sv"
 
 module slack_update_tb;
-  parameter STATE_DIM   = 6;
-  parameter CONTROL_DIM = 12;
+  parameter STATE_DIM   = 12;
+  parameter CONTROL_DIM = 4;
   parameter W           = 16;
 
   logic clk, reset, start;
@@ -50,18 +50,18 @@ module slack_update_tb;
     integer i;
     reset = 1;
     start = 0;
-    x_min = 5; x_max =  6;
-    u_min = 10; u_max =  12;
+    u_min = 5; u_max =  6;
+    x_min = 10; x_max =  12;
     #20;
     reset = 0;
 
-    x_k = '{16'sd1, 16'sd2, 16'sd3, 16'sd4, 16'sd5, 16'sd6};
-    y_k = '{16'sd6, 16'sd5, 16'sd4, 16'sd3, 16'sd2, 16'sd1};
+    u_k = '{16'sd1, 16'sd2, 16'sd3, 16'sd4, 16'sd5, 16'sd6};
+    g_k = '{16'sd6, 16'sd5, 16'sd4, 16'sd3, 16'sd2, 16'sd1};
 
-    u_k = '{16'sd1, 16'sd2, 16'sd3, 16'sd4,
+    x_k = '{16'sd1, 16'sd2, 16'sd3, 16'sd4,
             16'sd5, 16'sd6, 16'sd7, 16'sd8,
             16'sd9, 16'sd10,16'sd11,16'sd12};
-    g_k = '{16'sd12,16'sd11,16'sd10,16'sd9,
+    y_k = '{16'sd12,16'sd11,16'sd10,16'sd9,
             16'sd8, 16'sd7, 16'sd6, 16'sd5,
             16'sd4, 16'sd3, 16'sd2, 16'sd1};
 

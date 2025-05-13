@@ -48,7 +48,7 @@ module slack_update #(
     if (reset) begin
       v_k  <= '{default:'0};
       z_k  <= '{default:'0};
-      start = 1'b0;
+      //start = 1'b0;
       done <= 1'b0;
     end
     else if (start) begin

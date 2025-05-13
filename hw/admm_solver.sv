@@ -7,7 +7,7 @@ module admm_solver #(
     parameter EXT_DATA_WIDTH = 32,        // Bus data width
     parameter DATA_WIDTH = 64,            // Internal calculation width
     parameter ADDR_WIDTH = 16,            // Address width for bus interface
-    parameter MEM_ADDR_WIDTH = 9          // Address width for internal memories
+    parameter MEM_ADDR_WIDTH = 9          // internal memory
 )(
     // Clock and reset  
     input logic clk,
@@ -44,21 +44,38 @@ module admm_solver #(
     logic converged;
     
     // Memory signals for system matrices
-    logic [MEM_ADDR_WIDTH-1:0] A_rdaddress;
-    logic [DATA_WIDTH-1:0] A_data_out;
+    logic [MEM_ADDR_WIDTH-1:0] A_rdaddress, A_wraddress;
+    logic [DATA_WIDTH-1:0] A_data_out, A_data_in;
+    logic A_wren;
     
-    logic [MEM_ADDR_WIDTH-1:0] B_rdaddress;
-    logic [DATA_WIDTH-1:0] B_data_out;
+    logic [MEM_ADDR_WIDTH-1:0] B_rdaddress, B_wraddress;
+    logic [DATA_WIDTH-1:0] B_data_out, B_data_in;
+    logic B_wren;
+    
+    logic [MEM_ADDR_WIDTH-1:0] Q_rdaddress, Q_wraddress;
+    logic [DATA_WIDTH-1:0] Q_data_out, Q_data_in;
+    logic Q_wren;
+    
+    logic [MEM_ADDR_WIDTH-1:0] R_rdaddress, R_wraddress;
+    logic [DATA_WIDTH-1:0] R_data_out, R_data_in;
+    logic R_wren;
     
     // Memory signals for precomputed terms
-    logic [MEM_ADDR_WIDTH-1:0] K_rdaddress;
-    logic [DATA_WIDTH-1:0] K_data_out;
+    logic [MEM_ADDR_WIDTH-1:0] K_rdaddress, K_wraddress;
+    logic [DATA_WIDTH-1:0] K_data_out, K_data_in;
+    logic K_wren;
     
-    logic [MEM_ADDR_WIDTH-1:0] C1_rdaddress;
-    logic [DATA_WIDTH-1:0] C1_data_out;
+    logic [MEM_ADDR_WIDTH-1:0] C1_rdaddress, C1_wraddress;
+    logic [DATA_WIDTH-1:0] C1_data_out, C1_data_in;
+    logic C1_wren;
     
-    logic [MEM_ADDR_WIDTH-1:0] C2_rdaddress;
-    logic [DATA_WIDTH-1:0] C2_data_out;
+    logic [MEM_ADDR_WIDTH-1:0] C2_rdaddress, C2_wraddress;
+    logic [DATA_WIDTH-1:0] C2_data_out, C2_data_in;
+    logic C2_wren;
+    
+    logic [MEM_ADDR_WIDTH-1:0] P_rdaddress, P_wraddress;
+    logic [DATA_WIDTH-1:0] P_data_out, P_data_in;
+    logic P_wren;
     
     // Memory signals for trajectories
     logic [MEM_ADDR_WIDTH-1:0] x_rdaddress, x_wraddress;
@@ -139,106 +156,207 @@ module admm_solver #(
     // ADMM parameter
     logic [DATA_WIDTH-1:0] rho;
     
-    // Memory blocks for system matrices and trajectories
-    // These would typically be implemented as block RAMs in the FPGA
+    // Memory blocks for system matrices and trajectories using RAM modules
     
-    // System matrices
-    logic [DATA_WIDTH-1:0] A_mem [STATE_DIM*STATE_DIM];
-    logic [DATA_WIDTH-1:0] B_mem [STATE_DIM*INPUT_DIM];
-    logic [DATA_WIDTH-1:0] Q_mem [STATE_DIM*STATE_DIM];
-    logic [DATA_WIDTH-1:0] R_mem [INPUT_DIM*INPUT_DIM];
+    // System matrices - A matrix (STATE_DIM x STATE_DIM)
+    RAM A_ram (
+        .clock(clk),
+        .data(A_data_in),
+        .rdaddress(A_rdaddress),
+        .wraddress(A_wraddress),
+        .wren(A_wren),
+        .q(A_data_out)
+    );
     
-    // Precomputed cache terms
-    logic [DATA_WIDTH-1:0] K_mem [INPUT_DIM*STATE_DIM]; // Kinf
-    logic [DATA_WIDTH-1:0] C1_mem [INPUT_DIM*INPUT_DIM]; // (R + B'*P*B)^-1
-    logic [DATA_WIDTH-1:0] C2_mem [STATE_DIM*STATE_DIM]; // (A - B*K)'
-    logic [DATA_WIDTH-1:0] P_mem [STATE_DIM*STATE_DIM]; // Pinf
+    // System matrices - B matrix (STATE_DIM x INPUT_DIM)
+    RAM B_ram (
+        .clock(clk),
+        .data(B_data_in),
+        .rdaddress(B_rdaddress),
+        .wraddress(B_wraddress),
+        .wren(B_wren),
+        .q(B_data_out)
+    );
     
-    // Trajectories
-    logic [DATA_WIDTH-1:0] x_mem [STATE_DIM*HORIZON];
-    logic [DATA_WIDTH-1:0] u_mem [INPUT_DIM*(HORIZON-1)];
-    logic [DATA_WIDTH-1:0] z_mem [INPUT_DIM*(HORIZON-1)];
-    logic [DATA_WIDTH-1:0] v_mem [STATE_DIM*HORIZON];
+    // System matrices - Q matrix (STATE_DIM x STATE_DIM)
+    RAM Q_ram (
+        .clock(clk),
+        .data(Q_data_in),
+        .rdaddress(Q_rdaddress),
+        .wraddress(Q_wraddress),
+        .wren(Q_wren),
+        .q(Q_data_out)
+    );
     
-    // Previous values for residuals
-    logic [DATA_WIDTH-1:0] z_prev_mem [INPUT_DIM*(HORIZON-1)];
-    logic [DATA_WIDTH-1:0] v_prev_mem [STATE_DIM*HORIZON];
+    // System matrices - R matrix (INPUT_DIM x INPUT_DIM)
+    RAM R_ram (
+        .clock(clk),
+        .data(R_data_in),
+        .rdaddress(R_rdaddress),
+        .wraddress(R_wraddress),
+        .wren(R_wren),
+        .q(R_data_out)
+    );
     
-    // Dual variables
-    logic [DATA_WIDTH-1:0] y_mem [INPUT_DIM*(HORIZON-1)];
-    logic [DATA_WIDTH-1:0] g_mem [STATE_DIM*HORIZON];
+    // Precomputed cache terms - K matrix (Kinf) (INPUT_DIM x STATE_DIM)
+    RAM K_ram (
+        .clock(clk),
+        .data(K_data_in),
+        .rdaddress(K_rdaddress),
+        .wraddress(K_wraddress),
+        .wren(K_wren),
+        .q(K_data_out)
+    );
     
-    // Linear cost terms
-    logic [DATA_WIDTH-1:0] q_mem [STATE_DIM*HORIZON];
-    logic [DATA_WIDTH-1:0] r_mem [INPUT_DIM*(HORIZON-1)];
-    logic [DATA_WIDTH-1:0] p_mem [STATE_DIM*HORIZON];
-    logic [DATA_WIDTH-1:0] d_mem [INPUT_DIM*(HORIZON-1)];
+    // Precomputed cache terms - C1 matrix ((R + B'*P*B)^-1) (INPUT_DIM x INPUT_DIM)
+    RAM C1_ram (
+        .clock(clk),
+        .data(C1_data_in),
+        .rdaddress(C1_rdaddress),
+        .wraddress(C1_wraddress),
+        .wren(C1_wren),
+        .q(C1_data_out)
+    );
     
-    // Memory read/write operations (simplified for illustration)
-    // In a real implementation, these would be proper dual-port block RAMs
+    // Precomputed cache terms - C2 matrix ((A - B*K)') (STATE_DIM x STATE_DIM)
+    RAM C2_ram (
+        .clock(clk),
+        .data(C2_data_in),
+        .rdaddress(C2_rdaddress),
+        .wraddress(C2_wraddress),
+        .wren(C2_wren),
+        .q(C2_data_out)
+    );
     
-    // System matrices memory access
-    always_ff @(posedge clk) begin
-        A_data_out <= A_mem[A_rdaddress];
-        B_data_out <= B_mem[B_rdaddress];
-        K_data_out <= K_mem[K_rdaddress];
-        C1_data_out <= C1_mem[C1_rdaddress];
-        C2_data_out <= C2_mem[C2_rdaddress];
-    end
+    // Precomputed cache terms - P matrix (Pinf) (STATE_DIM x STATE_DIM)
+    RAM P_ram (
+        .clock(clk),
+        .data(P_data_in),
+        .rdaddress(P_rdaddress),
+        .wraddress(P_wraddress),
+        .wren(P_wren),
+        .q(P_data_out)
+    );
     
-    // Trajectory memory access
-    always_ff @(posedge clk) begin
-        // X memory
-        if (x_wren) 
-            x_mem[x_wraddress] <= x_data_in;
-        x_data_out <= x_mem[x_rdaddress];
-        
-        // U memory
-        if (u_wren) 
-            u_mem[u_wraddress] <= u_data_in;
-        u_data_out <= u_mem[u_rdaddress];
-        
-        // Z memory
-        if (z_wren) 
-            z_mem[z_wraddress] <= z_data_in;
-        z_data_out <= z_mem[z_rdaddress];
-        
-        // V memory
-        if (v_wren) 
-            v_mem[v_wraddress] <= v_data_in;
-        v_data_out <= v_mem[v_rdaddress];
-        
-        // Z_prev memory
-        if (z_prev_wren) 
-            z_prev_mem[z_prev_wraddress] <= z_prev_data_in;
-        z_prev_data_out <= z_prev_mem[z_prev_rdaddress];
-        
-        // Dual variables memory
-        if (y_wren) 
-            y_mem[y_wraddress] <= y_data_in;
-        y_data_out <= y_mem[y_rdaddress];
-        
-        if (g_wren) 
-            g_mem[g_wraddress] <= g_data_in;
-        g_data_out <= g_mem[g_rdaddress];
-        
-        // Linear cost terms memory
-        if (q_wren) 
-            q_mem[q_wraddress] <= q_data_in;
-        q_data_out <= q_mem[q_rdaddress];
-        
-        if (r_wren) 
-            r_mem[r_wraddress] <= r_data_in;
-        r_data_out <= r_mem[r_rdaddress];
-        
-        if (p_wren) 
-            p_mem[p_wraddress] <= p_data_in;
-        p_data_out <= p_mem[p_rdaddress];
-        
-        if (d_wren) 
-            d_mem[d_wraddress] <= d_data_in;
-        d_data_out <= d_mem[d_rdaddress];
-    end
+    // Trajectories - x trajectory (STATE_DIM x HORIZON)
+    RAM x_ram (
+        .clock(clk),
+        .data(x_data_in),
+        .rdaddress(x_rdaddress),
+        .wraddress(x_wraddress),
+        .wren(x_wren),
+        .q(x_data_out)
+    );
+    
+    // Trajectories - u trajectory (INPUT_DIM x (HORIZON-1))
+    RAM u_ram (
+        .clock(clk),
+        .data(u_data_in),
+        .rdaddress(u_rdaddress),
+        .wraddress(u_wraddress),
+        .wren(u_wren),
+        .q(u_data_out)
+    );
+    
+    // Trajectories - z trajectory (INPUT_DIM x (HORIZON-1))
+    RAM z_ram (
+        .clock(clk),
+        .data(z_data_in),
+        .rdaddress(z_rdaddress),
+        .wraddress(z_wraddress),
+        .wren(z_wren),
+        .q(z_data_out)
+    );
+    
+    // Trajectories - v trajectory (STATE_DIM x HORIZON)
+    RAM v_ram (
+        .clock(clk),
+        .data(v_data_in),
+        .rdaddress(v_rdaddress),
+        .wraddress(v_wraddress),
+        .wren(v_wren),
+        .q(v_data_out)
+    );
+    
+    // Previous values for residuals - z_prev (INPUT_DIM x (HORIZON-1))
+    RAM z_prev_ram (
+        .clock(clk),
+        .data(z_prev_data_in),
+        .rdaddress(z_prev_rdaddress),
+        .wraddress(z_prev_wraddress),
+        .wren(z_prev_wren),
+        .q(z_prev_data_out)
+    );
+    
+    // Previous values for residuals - v_prev (STATE_DIM x HORIZON)
+    RAM v_prev_ram (
+        .clock(clk),
+        .data(v_prev_data_in),
+        .rdaddress(v_prev_rdaddress),
+        .wraddress(v_prev_wraddress),
+        .wren(v_prev_wren),
+        .q(v_prev_data_out)
+    );
+    
+    // Dual variables - y (INPUT_DIM x (HORIZON-1))
+    RAM y_ram (
+        .clock(clk),
+        .data(y_data_in),
+        .rdaddress(y_rdaddress),
+        .wraddress(y_wraddress),
+        .wren(y_wren),
+        .q(y_data_out)
+    );
+    
+    // Dual variables - g (STATE_DIM x HORIZON)
+    RAM g_ram (
+        .clock(clk),
+        .data(g_data_in),
+        .rdaddress(g_rdaddress),
+        .wraddress(g_wraddress),
+        .wren(g_wren),
+        .q(g_data_out)
+    );
+    
+    // Linear cost terms - q (STATE_DIM x HORIZON)
+    RAM q_ram (
+        .clock(clk),
+        .data(q_data_in),
+        .rdaddress(q_rdaddress),
+        .wraddress(q_wraddress),
+        .wren(q_wren),
+        .q(q_data_out)
+    );
+    
+    // Linear cost terms - r (INPUT_DIM x (HORIZON-1))
+    RAM r_ram (
+        .clock(clk),
+        .data(r_data_in),
+        .rdaddress(r_rdaddress),
+        .wraddress(r_wraddress),
+        .wren(r_wren),
+        .q(r_data_out)
+    );
+    
+    // Linear cost terms - p (STATE_DIM x HORIZON)
+    RAM p_ram (
+        .clock(clk),
+        .data(p_data_in),
+        .rdaddress(p_rdaddress),
+        .wraddress(p_wraddress),
+        .wren(p_wren),
+        .q(p_data_out)
+    );
+    
+    // Linear cost terms - d (INPUT_DIM x (HORIZON-1))
+    RAM d_ram (
+        .clock(clk),
+        .data(d_data_in),
+        .rdaddress(d_rdaddress),
+        .wraddress(d_wraddress),
+        .wren(d_wren),
+        .q(d_data_out)
+    );
     
     // Instantiate solver stage 1 - X-Update (Riccati recursion and forward rollout)
     solver_stage1 #(
@@ -287,6 +405,11 @@ module admm_solver #(
         .d_wraddress(d_wraddress),
         .d_data_in(d_data_in),
         .d_wren(d_wren),
+        
+        // Added p vector write ports
+        .p_wraddress(p_wraddress),
+        .p_data_in(p_data_in),
+        .p_wren(p_wren),
         
         // Configuration
         .active_horizon(active_horizon),
@@ -459,11 +582,7 @@ module admm_solver #(
                 end
                 
                 INIT: begin
-                    // Initialize memories and variables for solving
-                    // In a real implementation, this would load initial conditions and matrices
-                    // from the bus interface or from memory
-                    
-                    // For simplicity, we'll just transition to the first stage
+                    // TODO: INIT
                     state <= STAGE1;
                 end
                 
@@ -509,8 +628,7 @@ module admm_solver #(
                 end
                 
                 OUTPUT_RESULTS: begin
-                    // Prepare results for output
-                    // In a real implementation, this might involve copying results to output registers
+                    //TODO: FINISH
                     state <= DONE;
                 end
                 
@@ -538,7 +656,7 @@ module admm_solver #(
                     16'h0000: readdata <= {31'b0, solver_done};  // Status register
                     16'h0004: readdata <= current_iter;          // Current iteration count
                     16'h0008: readdata <= active_horizon;        // Active horizon length
-                    // Add more read address cases for results and status
+                    // TODO: Add more read address cases for results and status
                     default: readdata <= 0;
                 endcase
             end else if (write) begin
@@ -546,7 +664,7 @@ module admm_solver #(
                 case (addr)
                     16'h0000: start_solving <= writedata[0];     // Start solver
                     16'h0004: active_horizon <= writedata;       // Set horizon length
-                    // Add more write address cases for configuration
+                    // TODO: Add more write address cases for configuration
                 endcase
             end
         end

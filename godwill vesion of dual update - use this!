@@ -1,0 +1,92 @@
+`timescale 1ns/1ps
+
+module dual_update #(
+    parameter int STATE_DIM   = 6,
+    parameter int CONTROL_DIM = 12,
+    parameter int W           = 16
+) (
+    input  logic                   clk,
+    input  logic                   reset,
+    input  logic                   start,
+
+    // Flattened state-dual inputs
+    input  logic signed [W*STATE_DIM-1:0] u_k_flat,
+    input  logic signed [W*STATE_DIM-1:0] z_k_flat,
+    input  logic signed [W*STATE_DIM-1:0] y_k_flat,
+
+    // Flattened control-dual inputs
+    input  logic signed [W*CONTROL_DIM-1:0] x_k_flat,
+    input  logic signed [W*CONTROL_DIM-1:0] v_k_flat,
+    input  logic signed [W*CONTROL_DIM-1:0] g_k_flat,
+
+    // Flattened updated dual outputs
+    output logic signed [W*STATE_DIM-1:0]   y_out_flat,
+    output logic signed [W*CONTROL_DIM-1:0] g_out_flat,
+
+    output logic                            done
+);
+
+  // Internal unpacked arrays
+  logic signed [W-1:0] u_k     [STATE_DIM];
+  logic signed [W-1:0] z_k     [STATE_DIM];
+  logic signed [W-1:0] y_k     [STATE_DIM];
+  logic signed [W-1:0] y_calc  [STATE_DIM];
+  logic signed [W-1:0] y_out   [STATE_DIM];
+
+  logic signed [W-1:0] x_k     [CONTROL_DIM];
+  logic signed [W-1:0] v_k     [CONTROL_DIM];
+  logic signed [W-1:0] g_k     [CONTROL_DIM];
+  logic signed [W-1:0] g_calc  [CONTROL_DIM];
+  logic signed [W-1:0] g_out   [CONTROL_DIM];
+
+  // Unpack inputs from flattened vectors
+  always_comb begin
+    for (int i = 0; i < STATE_DIM; i++) begin
+      u_k[i] = u_k_flat[i*W +: W];
+      z_k[i] = z_k_flat[i*W +: W];
+      y_k[i] = y_k_flat[i*W +: W];
+    end
+    for (int i = 0; i < CONTROL_DIM; i++) begin
+      x_k[i] = x_k_flat[i*W +: W];
+      v_k[i] = v_k_flat[i*W +: W];
+      g_k[i] = g_k_flat[i*W +: W];
+    end
+  end
+
+  // Combinational updates
+  generate
+    genvar i;
+    for (i = 0; i < STATE_DIM; i++) begin : y_update
+      assign y_calc[i] = y_k[i] + (u_k[i] - z_k[i]);
+    end
+    for (i = 0; i < CONTROL_DIM; i++) begin : g_update
+      assign g_calc[i] = g_k[i] + (x_k[i] - v_k[i]);
+    end
+  endgenerate
+
+  // Sequential register updates
+  always_ff @(posedge clk or posedge reset) begin
+    if (reset) begin
+      for (int i = 0; i < STATE_DIM; i++) y_out[i] <= '0;
+      for (int i = 0; i < CONTROL_DIM; i++) g_out[i] <= '0;
+      done <= 1'b0;
+    end else if (start) begin
+      for (int i = 0; i < STATE_DIM; i++) y_out[i] <= y_calc[i];
+      for (int i = 0; i < CONTROL_DIM; i++) g_out[i] <= g_calc[i];
+      done <= 1'b1;
+    end else begin
+      done <= 1'b0;
+    end
+  end
+
+  // Pack outputs into flattened vectors
+  always_comb begin
+    for (int i = 0; i < STATE_DIM; i++) begin
+      y_out_flat[i*W +: W] = y_out[i];
+    end
+    for (int i = 0; i < CONTROL_DIM; i++) begin
+      g_out_flat[i*W +: W] = g_out[i];
+    end
+  end
+
+endmodule

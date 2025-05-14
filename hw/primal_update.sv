@@ -2,10 +2,11 @@
 // Based on TinyMPC algorithm
 
 module primal_update #(
-    parameter STATE_DIM = 6,             // Dimension of state vector (nx)
-    parameter INPUT_DIM = 3,             // Dimension of input vector (nu)
+    parameter STATE_DIM = 12,             // Dimension of state vector (nx)
+    parameter INPUT_DIM = 4,             // Dimension of input vector (nu)
     parameter HORIZON = 30,              // Maximum MPC horizon length (N)
-    parameter DATA_WIDTH = 64,           
+    parameter DATA_WIDTH = 16,           // 16-bit fixed point
+    parameter FRAC_BITS = 8,             // Number of fractional bits for fixed point
     parameter ADDR_WIDTH = 9            
 )(
     input logic clk,                     // Clock
@@ -116,25 +117,6 @@ module primal_update #(
     // Temporary computation variables
     logic [DATA_WIDTH-1:0] temp_val;     // Temporary value for scalar computations
     
-    // Floating point operations
-    // Note: In a real implementation, these would be replaced with proper floating point units
-    // For simplicity, we're using simple assignments here
-    function automatic logic [DATA_WIDTH-1:0] fp_add(logic [DATA_WIDTH-1:0] a, logic [DATA_WIDTH-1:0] b);
-        return a + b; // Simplified - would need actual FP adder
-    endfunction
-    
-    function automatic logic [DATA_WIDTH-1:0] fp_sub(logic [DATA_WIDTH-1:0] a, logic [DATA_WIDTH-1:0] b);
-        return a - b; // Simplified - would need actual FP subtractor
-    endfunction
-    
-    function automatic logic [DATA_WIDTH-1:0] fp_mul(logic [DATA_WIDTH-1:0] a, logic [DATA_WIDTH-1:0] b);
-        return a * b; // Simplified - would need actual FP multiplier
-    endfunction
-    
-    function automatic logic [DATA_WIDTH-1:0] fp_neg(logic [DATA_WIDTH-1:0] a);
-        return -a; // Simplified - would need actual FP negation
-    endfunction
-    
     // State machine implementation
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
@@ -172,9 +154,7 @@ module primal_update #(
             d_wraddress <= 0;
             d_data_in <= 0;
             d_wren <= 0;
-            
-            // Reset computation variables
-            temp_val <= 0;
+
             temp_sum <= 0;
         end else begin
             // Default values for control signals
@@ -297,11 +277,11 @@ module primal_update #(
                                     j <= 1;
                                 end else if (j <= STATE_DIM) begin
                                     // Accumulate B.T @ p[:, k+1]
-                                    Bp_vector[i] <= fp_add(Bp_vector[i], fp_mul(B_matrix[j-1][i], p_vector[j-1]));
+                                    Bp_vector[i] <= Bp_vector[i] + B_matrix[j-1][i]*p_vector[j-1];
                                     j <= j + 1;
                                 end else if (j == STATE_DIM + 1) begin
                                     // Add r[:, k]
-                                    Bp_vector[i] <= fp_add(Bp_vector[i], r_vector[i]);
+                                    Bp_vector[i] <= Bp_vector[i] + r_vector[i];
                                     j <= STATE_DIM + 2;
                                 end else if (j == STATE_DIM + 2) begin
                                     // Initialize d_vector[i]
@@ -309,7 +289,7 @@ module primal_update #(
                                     j <= STATE_DIM + 3;
                                 end else if (j < STATE_DIM + 3 + INPUT_DIM) begin
                                     // Compute C1 @ (B.T @ p[:, k+1] + r[:, k])
-                                    d_vector[i] <= fp_add(d_vector[i], fp_mul(C1_matrix[i][j-(STATE_DIM+3)], Bp_vector[j-(STATE_DIM+3)]));
+                                    d_vector[i] <= d_vector[i] + C1_matrix[i][j-(STATE_DIM+3)]*Bp_vector[j-(STATE_DIM+3)];
                                     j <= j + 1;
                                 end else begin
                                     // Move to next row
@@ -341,11 +321,11 @@ module primal_update #(
                                     end
                                 end else if (j < 2 + STATE_DIM) begin
                                     // Add C2 @ p[:, k+1]
-                                    next_p_vector[i] <= fp_add(next_p_vector[i], fp_mul(C2_matrix[i][j-2], p_vector[j-2]));
+                                    next_p_vector[i] <= next_p_vector[i] + C2_matrix[i][j-2]*p_vector[j-2];
                                     j <= j + 1;
                                 end else if (j < 2 + STATE_DIM + INPUT_DIM) begin
                                     // Subtract K.T @ r[:, k]
-                                    next_p_vector[i] <= fp_sub(next_p_vector[i], fp_mul(K_matrix[j-(2+STATE_DIM)][i], r_vector[j-(2+STATE_DIM)]));
+                                    next_p_vector[i] <= next_p_vector[i] - K_matrix[j-(2+STATE_DIM)][i]*r_vector[j-(2+STATE_DIM)];
                                     j <= j + 1;
                                 end else begin
                                     // Move to next element
@@ -432,7 +412,7 @@ module primal_update #(
                                     j <= 1;
                                 end else if (j <= STATE_DIM) begin
                                     // Accumulate K_inf @ x[:, k]
-                                    temp_sum <= fp_add(temp_sum, fp_mul(K_matrix[i][j-1], x_trajectory[k][j-1]));
+                                    temp_sum <= temp_sum + K_matrix[i][j-1]*x_trajectory[k][j-1];
                                     j <= j + 1;
                                 end else if (j == STATE_DIM + 1) begin
                                     // Load d vector for timestep k
@@ -442,7 +422,7 @@ module primal_update #(
                                     // Wait for memory read
                                     if (cycle_counter > 1) begin
                                         // Compute full control with feedforward term: u = -K_inf @ x - d
-                                        u_trajectory[k][i] <= fp_sub(fp_neg(temp_sum), d_data_out);
+                                        u_trajectory[k][i] <= (-1 * temp_sum) - d_data_out;
                                         j <= 0;
                                         i <= i + 1;
                                         cycle_counter <= 0;
@@ -466,11 +446,11 @@ module primal_update #(
                                         j <= 1;
                                     end else if (j <= STATE_DIM) begin
                                         // Accumulate A @ x[:, k]
-                                        temp_sum <= fp_add(temp_sum, fp_mul(A_matrix[i][j-1], x_trajectory[k][j-1]));
+                                        temp_sum <= temp_sum + A_matrix[i][j-1]*x_trajectory[k][j-1];
                                         j <= j + 1;
                                     end else if (j <= STATE_DIM + INPUT_DIM) begin
                                         // Accumulate B @ u[:, k]
-                                        temp_sum <= fp_add(temp_sum, fp_mul(B_matrix[i][j-STATE_DIM-1], u_trajectory[k][j-STATE_DIM-1]));
+                                        temp_sum <= temp_sum + B_matrix[i][j-STATE_DIM-1]*u_trajectory[k][j-STATE_DIM-1];
                                         j <= j + 1;
                                     end else begin
                                         // Store next state
@@ -482,7 +462,7 @@ module primal_update #(
                                     // Next state computed, move to store results
                                     substate <= FP_STORE_RESULTS;
                                     i <= 0;
-                                }
+                                end
                             end else begin
                                 // Reached end of horizon, move to store results
                                 substate <= FP_STORE_RESULTS;
@@ -519,7 +499,7 @@ module primal_update #(
                                 end else begin
                                     // Forward pass complete
                                     state <= DONE_STATE;
-                                }
+                                end
                             end
                         end
                     endcase

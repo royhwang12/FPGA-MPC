@@ -1,11 +1,11 @@
-
 module admm_solver #(
-    parameter STATE_DIM = 6,              // Dimension of state vector (nx)
-    parameter INPUT_DIM = 3,              // Dimension of input vector (nu)
+    parameter STATE_DIM = 12,              // Dimension of state vector (nx)
+    parameter INPUT_DIM = 4,              // Dimension of input vector (nu)
     parameter HORIZON = 30,               // Maximum MPC horizon length (N)
     parameter MAX_ITER = 500,             // Maximum ADMM iterations
     parameter EXT_DATA_WIDTH = 32,        // Bus data width
-    parameter DATA_WIDTH = 64,            // Internal calculation width
+    parameter DATA_WIDTH = 16,            // Internal calculation width (16-bit fixed point)
+    parameter FRAC_BITS = 8,              // Number of fractional bits for fixed point
     parameter ADDR_WIDTH = 16,            // Address width for bus interface
     parameter MEM_ADDR_WIDTH = 9          // internal memory
 )(
@@ -358,7 +358,7 @@ module admm_solver #(
         .q(d_data_out)
     );
     
-    // Instantiate solver stage 1 - X-Update (Riccati recursion and forward rollout)
+    // Instantiate solver stage 1 - X-Update (Riccati recursion & trajectory rollout)
     primal_update #(
         .STATE_DIM(STATE_DIM),
         .INPUT_DIM(INPUT_DIM),
@@ -498,6 +498,40 @@ module admm_solver #(
         .g_wraddress(g_wraddress),
         .g_data_in(g_data_in),
         .g_wren(g_wren),
+        
+        // Linear cost terms
+        .r_rdaddress(r_rdaddress),
+        .r_data_out(r_data_out),
+        .r_wraddress(r_wraddress),
+        .r_data_in(r_data_in),
+        .r_wren(r_wren),
+        
+        .q_rdaddress(q_rdaddress),
+        .q_data_out(q_data_out),
+        .q_wraddress(q_wraddress),
+        .q_data_in(q_data_in),
+        .q_wren(q_wren),
+        
+        .p_rdaddress(p_rdaddress),
+        .p_data_out(p_data_out),
+        .p_wraddress(p_wraddress),
+        .p_data_in(p_data_in),
+        .p_wren(p_wren),
+        
+        // Reference trajectories
+        .x_ref(x_ref),
+        .u_ref(u_ref),
+        
+        // Cost matrices
+        .R_rdaddress(R_rdaddress),
+        .R_data_out(R_data_out),
+        .Q_rdaddress(Q_rdaddress),
+        .Q_data_out(Q_data_out),
+        .P_rdaddress(P_rdaddress),
+        .P_data_out(P_data_out),
+        
+        // ADMM parameter
+        .rho(rho),
         
         // Residuals
         .pri_res_u(pri_res_u),
@@ -649,22 +683,310 @@ module admm_solver #(
         if (rst) begin
             readdata <= 0;
             start_solving <= 0;
+            
+            // Reset memory write enables
+            A_wren <= 0;
+            B_wren <= 0;
+            Q_wren <= 0;
+            R_wren <= 0;
+            
+            // Reset indices for memory operations
+            int i, j;
+            for (i = 0; i < STATE_DIM; i++) begin
+                for (j = 0; j < STATE_DIM; j++) begin
+                    A_matrix[i][j] <= 0;
+                end
+                for (j = 0; j < INPUT_DIM; j++) begin
+                    B_matrix[i][j] <= 0;
+                end
+                x_init[i] <= 0;
+                x_min[i] <= -64'h7FEFFFFFFFFFFFFF; // -MAX_FLOAT
+                x_max[i] <= 64'h7FEFFFFFFFFFFFFF;  // MAX_FLOAT
+            end
+            
+            for (i = 0; i < INPUT_DIM; i++) begin
+                u_min[i] <= -64'h7FEFFFFFFFFFFFFF; // -MAX_FLOAT
+                u_max[i] <= 64'h7FEFFFFFFFFFFFFF;  // MAX_FLOAT
+            end
+            
+            // Reset tolerances to default values
+            pri_tol <= 64'h3F50624DD2F1A9FC; // 0.001 in double precision
+            dual_tol <= 64'h3F50624DD2F1A9FC; // 0.001 in double precision
+            
+            // Reset rho parameter
+            rho <= 64'h3FF0000000000000; // 1.0 in double precision
+            
         end else if (chipselect) begin
+            // Default values for memory write enables
+            A_wren <= 0;
+            B_wren <= 0;
+            Q_wren <= 0;
+            R_wren <= 0;
+            
             if (read) begin
                 // Read operations
-                case (addr)
-                    16'h0000: readdata <= {31'b0, solver_done};  // Status register
-                    16'h0004: readdata <= current_iter;          // Current iteration count
-                    16'h0008: readdata <= active_horizon;        // Active horizon length
-                    // TODO: Add more read address cases for results and status
+                case (addr[15:12]) // Use upper 4 bits for register type
+                    // Status and configuration registers (0x0000-0x0FFF)
+                    4'h0: begin
+                        case (addr[11:0])
+                            12'h000: readdata <= {31'b0, solver_done};  // Status register
+                            12'h004: readdata <= current_iter;          // Current iteration count
+                            12'h008: readdata <= active_horizon;        // Active horizon length
+                            12'h00C: readdata <= converged;             // Convergence flag
+                            12'h010: readdata <= pri_res_u[31:0];       // Primal residual (inputs) - lower 32 bits
+                            12'h014: readdata <= pri_res_u[63:32];      // Primal residual (inputs) - upper 32 bits
+                            12'h018: readdata <= pri_res_x[31:0];       // Primal residual (states) - lower 32 bits
+                            12'h01C: readdata <= pri_res_x[63:32];      // Primal residual (states) - upper 32 bits
+                            12'h020: readdata <= dual_res[31:0];        // Dual residual - lower 32 bits
+                            12'h024: readdata <= dual_res[63:32];       // Dual residual - upper 32 bits
+                            default: readdata <= 0;
+                        endcase
+                    end
+                    
+                    // Optimized state trajectory results (0x1000-0x1FFF)
+                    4'h1: begin
+                        int state_idx = addr[11:8];    // Which state variable (0 to STATE_DIM-1)
+                        int horizon_idx = addr[7:0];   // Which horizon step (0 to HORIZON-1)
+                        
+                        if (state_idx < STATE_DIM && horizon_idx < HORIZON) begin
+                            // Set read address for x memory
+                            x_rdaddress <= horizon_idx * STATE_DIM + state_idx;
+                            // Return lower 32 bits of the state value
+                            readdata <= x_data_out[31:0];
+                        end else begin
+                            readdata <= 0;
+                        end
+                    end
+                    
+                    // Optimized input trajectory results (0x2000-0x2FFF)
+                    4'h2: begin
+                        int input_idx = addr[11:8];    // Which input variable (0 to INPUT_DIM-1)
+                        int horizon_idx = addr[7:0];   // Which horizon step (0 to HORIZON-2)
+                        
+                        if (input_idx < INPUT_DIM && horizon_idx < HORIZON-1) begin
+                            // Set read address for u memory
+                            u_rdaddress <= horizon_idx * INPUT_DIM + input_idx;
+                            // Return lower 32 bits of the input value
+                            readdata <= u_data_out[31:0];
+                        end else begin
+                            readdata <= 0;
+                        end
+                    end
+                    
+                    // Upper 32 bits of optimized state trajectory (0x3000-0x3FFF)
+                    4'h3: begin
+                        int state_idx = addr[11:8];    // Which state variable (0 to STATE_DIM-1)
+                        int horizon_idx = addr[7:0];   // Which horizon step (0 to HORIZON-1)
+                        
+                        if (state_idx < STATE_DIM && horizon_idx < HORIZON) begin
+                            // Set read address for x memory
+                            x_rdaddress <= horizon_idx * STATE_DIM + state_idx;
+                            // Return upper 32 bits of the state value
+                            readdata <= x_data_out[63:32];
+                        end else begin
+                            readdata <= 0;
+                        end
+                    end
+                    
+                    // Upper 32 bits of optimized input trajectory (0x4000-0x4FFF)
+                    4'h4: begin
+                        int input_idx = addr[11:8];    // Which input variable (0 to INPUT_DIM-1)
+                        int horizon_idx = addr[7:0];   // Which horizon step (0 to HORIZON-2)
+                        
+                        if (input_idx < INPUT_DIM && horizon_idx < HORIZON-1) begin
+                            // Set read address for u memory
+                            u_rdaddress <= horizon_idx * INPUT_DIM + input_idx;
+                            // Return upper 32 bits of the input value
+                            readdata <= u_data_out[63:32];
+                        end else begin
+                            readdata <= 0;
+                        end
+                    end
+                    
                     default: readdata <= 0;
                 endcase
             end else if (write) begin
                 // Write operations
-                case (addr)
-                    16'h0000: start_solving <= writedata[0];     // Start solver
-                    16'h0004: active_horizon <= writedata;       // Set horizon length
-                    // TODO: Add more write address cases for configuration
+                case (addr[15:12]) // Use upper 4 bits for register type
+                    // Status and configuration registers (0x0000-0x0FFF)
+                    4'h0: begin
+                        case (addr[11:0])
+                            12'h000: start_solving <= writedata[0];     // Start solver
+                            12'h004: active_horizon <= writedata;       // Set horizon length
+                            12'h008: pri_tol[31:0] <= writedata;        // Set primal tolerance (lower 32 bits)
+                            12'h00C: pri_tol[63:32] <= writedata;       // Set primal tolerance (upper 32 bits)
+                            12'h010: dual_tol[31:0] <= writedata;       // Set dual tolerance (lower 32 bits)
+                            12'h014: dual_tol[63:32] <= writedata;      // Set dual tolerance (upper 32 bits)
+                            12'h018: rho[31:0] <= writedata;            // Set rho parameter (lower 32 bits)
+                            12'h01C: rho[63:32] <= writedata;           // Set rho parameter (upper 32 bits)
+                        endcase
+                    end
+                    
+                    // System matrix A (0x1000-0x1FFF)
+                    4'h1: begin
+                        int row = addr[11:8];    // Row index (0 to STATE_DIM-1)
+                        int col = addr[7:4];     // Column index (0 to STATE_DIM-1)
+                        int is_upper = addr[3];  // 0 for lower 32 bits, 1 for upper 32 bits
+                        
+                        if (row < STATE_DIM && col < STATE_DIM) begin
+                            if (is_upper) begin
+                                // Store upper 32 bits and write to memory
+                                A_matrix[row][col][63:32] <= writedata;
+                                A_wraddress <= row * STATE_DIM + col;
+                                A_data_in <= A_matrix[row][col];
+                                A_wren <= 1;
+                            end else begin
+                                // Store lower 32 bits (don't write to memory yet)
+                                A_matrix[row][col][31:0] <= writedata;
+                            end
+                        end
+                    end
+                    
+                    // System matrix B (0x2000-0x2FFF)
+                    4'h2: begin
+                        int row = addr[11:8];    // Row index (0 to STATE_DIM-1)
+                        int col = addr[7:4];     // Column index (0 to INPUT_DIM-1)
+                        int is_upper = addr[3];  // 0 for lower 32 bits, 1 for upper 32 bits
+                        
+                        if (row < STATE_DIM && col < INPUT_DIM) begin
+                            if (is_upper) begin
+                                // Store upper 32 bits and write to memory
+                                B_matrix[row][col][63:32] <= writedata;
+                                B_wraddress <= row * INPUT_DIM + col;
+                                B_data_in <= B_matrix[row][col];
+                                B_wren <= 1;
+                            end else begin
+                                // Store lower 32 bits (don't write to memory yet)
+                                B_matrix[row][col][31:0] <= writedata;
+                            end
+                        end
+                    end
+                    
+                    // Cost matrix Q (0x3000-0x3FFF)
+                    4'h3: begin
+                        int row = addr[11:8];    // Row index (0 to STATE_DIM-1)
+                        int col = addr[7:4];     // Column index (0 to STATE_DIM-1)
+                        int is_upper = addr[3];  // 0 for lower 32 bits, 1 for upper 32 bits
+                        
+                        if (row < STATE_DIM && col < STATE_DIM) begin
+                            if (is_upper) begin
+                                // Store upper 32 bits and write to memory
+                                Q_wraddress <= row * STATE_DIM + col;
+                                Q_data_in <= {writedata, Q_data_in[31:0]};
+                                Q_wren <= 1;
+                            end else begin
+                                // Store lower 32 bits (don't write to memory yet)
+                                Q_data_in[31:0] <= writedata;
+                            end
+                        end
+                    end
+                    
+                    // Cost matrix R (0x4000-0x4FFF)
+                    4'h4: begin
+                        int row = addr[11:8];    // Row index (0 to INPUT_DIM-1)
+                        int col = addr[7:4];     // Column index (0 to INPUT_DIM-1)
+                        int is_upper = addr[3];  // 0 for lower 32 bits, 1 for upper 32 bits
+                        
+                        if (row < INPUT_DIM && col < INPUT_DIM) begin
+                            if (is_upper) begin
+                                // Store upper 32 bits and write to memory
+                                R_wraddress <= row * INPUT_DIM + col;
+                                R_data_in <= {writedata, R_data_in[31:0]};
+                                R_wren <= 1;
+                            end else begin
+                                // Store lower 32 bits (don't write to memory yet)
+                                R_data_in[31:0] <= writedata;
+                            end
+                        end
+                    end
+                    
+                    // Initial state x_init (0x5000-0x5FFF)
+                    4'h5: begin
+                        int state_idx = addr[11:8];    // Which state variable (0 to STATE_DIM-1)
+                        int is_upper = addr[7];        // 0 for lower 32 bits, 1 for upper 32 bits
+                        
+                        if (state_idx < STATE_DIM) begin
+                            if (is_upper) begin
+                                // Store upper 32 bits
+                                x_init[state_idx][63:32] <= writedata;
+                            end else begin
+                                // Store lower 32 bits
+                                x_init[state_idx][31:0] <= writedata;
+                            end
+                        end
+                    end
+                    
+                    // State reference trajectory x_ref (0x6000-0x6FFF)
+                    4'h6: begin
+                        int state_idx = addr[11:8];    // Which state variable (0 to STATE_DIM-1)
+                        int horizon_idx = addr[7:0];   // Which horizon step (0 to HORIZON-1)
+                        
+                        if (state_idx < STATE_DIM && horizon_idx < HORIZON) begin
+                            // Store reference value (only lower 32 bits for simplicity)
+                            x_ref[state_idx][horizon_idx][31:0] <= writedata;
+                        end
+                    end
+                    
+                    // Input reference trajectory u_ref (0x7000-0x7FFF)
+                    4'h7: begin
+                        int input_idx = addr[11:8];    // Which input variable (0 to INPUT_DIM-1)
+                        int horizon_idx = addr[7:0];   // Which horizon step (0 to HORIZON-2)
+                        
+                        if (input_idx < INPUT_DIM && horizon_idx < HORIZON-1) begin
+                            // Store reference value (only lower 32 bits for simplicity)
+                            u_ref[input_idx][horizon_idx][31:0] <= writedata;
+                        end
+                    end
+                    
+                    // State bounds (0x8000-0x8FFF)
+                    4'h8: begin
+                        int state_idx = addr[11:8];    // Which state variable (0 to STATE_DIM-1)
+                        int is_max = addr[7];          // 0 for min bound, 1 for max bound
+                        int is_upper = addr[6];        // 0 for lower 32 bits, 1 for upper 32 bits
+                        
+                        if (state_idx < STATE_DIM) begin
+                            if (is_max) begin
+                                // Set max bound
+                                if (is_upper) begin
+                                    x_max[state_idx][63:32] <= writedata;
+                                end else begin
+                                    x_max[state_idx][31:0] <= writedata;
+                                end
+                            end else begin
+                                // Set min bound
+                                if (is_upper) begin
+                                    x_min[state_idx][63:32] <= writedata;
+                                end else begin
+                                    x_min[state_idx][31:0] <= writedata;
+                                end
+                            end
+                        end
+                    end
+                    
+                    // Input bounds (0x9000-0x9FFF)
+                    4'h9: begin
+                        int input_idx = addr[11:8];    // Which input variable (0 to INPUT_DIM-1)
+                        int is_max = addr[7];          // 0 for min bound, 1 for max bound
+                        int is_upper = addr[6];        // 0 for lower 32 bits, 1 for upper 32 bits
+                        
+                        if (input_idx < INPUT_DIM) begin
+                            if (is_max) begin
+                                // Set max bound
+                                if (is_upper) begin
+                                    u_max[input_idx][63:32] <= writedata;
+                                end else begin
+                                    u_max[input_idx][31:0] <= writedata;
+                                end
+                            end else begin
+                                // Set min bound
+                                if (is_upper) begin
+                                    u_min[input_idx][63:32] <= writedata;
+                                end else begin
+                                    u_min[input_idx][31:0] <= writedata;
+                                end
+                            end
+                        end
+                    end
                 endcase
             end
         end

@@ -5,9 +5,11 @@ module residual_calculator #(
     parameter STATE_DIM = 12,             // Dimension of state vector (nx)
     parameter INPUT_DIM = 4,             // Dimension of input vector (nu)
     parameter HORIZON = 30,              // Maximum MPC horizon length (N)
-    parameter DATA_WIDTH_INPUT = 64, 
-    parameter DATA_WIDTH_STATE = 192, 
-    parameter ADDR_WIDTH = 9
+
+    parameter DATA_WIDTH = 16,           // 16-bit fixed point
+    parameter FRAC_BITS = 8,             // Number of fractional bits for fixed point
+    parameter ADDR_WIDTH = 9             
+
 )(
     input logic clk,                     // Clock
     input logic rst,                     // Reset
@@ -18,19 +20,16 @@ module residual_calculator #(
     input logic [DATA_WIDTH_STATE-1:0] pri_res_x,    // Primal residual for states from dual_update
     
     // Memory interfaces for z and z_prev
-    // Current z values
     output logic [ADDR_WIDTH-1:0] z_rdaddress,
-    input logic [DATA_WIDTH_STATE-1:0] z_data_out,  // z uses DATA_WIDTH_STATE
-    
-    // Previous z values
+
+    input logic [DATA_WIDTH-1:0] z_data_out,
+
     output logic [ADDR_WIDTH-1:0] z_prev_rdaddress,
-    input logic [DATA_WIDTH_STATE-1:0] z_prev_data_out,  // z_prev uses DATA_WIDTH_STATE
-    
-    // Tolerance thresholds
-    input logic [DATA_WIDTH_INPUT-1:0] pri_tol,      // Primal residual tolerance
-    input logic [DATA_WIDTH_INPUT-1:0] dual_tol,     // Dual residual tolerance
-    
-    // Configuration
+    input logic [DATA_WIDTH-1:0] z_prev_data_out,
+
+    input logic [DATA_WIDTH-1:0] pri_tol,      // Primal residual tolerance
+    input logic [DATA_WIDTH-1:0] dual_tol,     // Dual residual tolerance
+
     input logic [31:0] active_horizon,  // Current horizon length to use
     
     // Outputs
@@ -51,7 +50,6 @@ module residual_calculator #(
     logic [31:0] k;                     // Step counter for horizon
     logic [31:0] state_timer;           // State timer
     
-    // Memory access state variables
     logic [31:0] read_stage;            // Tracks memory read sequencing
     
     // Temporary storage for values read from memory

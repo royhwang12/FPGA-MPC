@@ -1,20 +1,17 @@
 // y-update and g-update (dual variable update) steps
 
-`timescale 1 ps / 1 ps
 module dual_update #(
     parameter STATE_DIM = 12,             // Dimension of state vector (nx)
     parameter INPUT_DIM = 4,             // Dimension of input vector (nu)
     parameter HORIZON = 30,              // Maximum MPC horizon length (N)
-
     parameter DATA_WIDTH = 16,           // 16-bit fixed point
     parameter FRAC_BITS = 8,             // Number of fractional bits for fixed point
     parameter ADDR_WIDTH = 9            
 )(
-    input logic clk,                     // Clock
-    input logic rst,                     // Reset
-    input logic start,                   // Start signal
+    input logic clk,
+    input logic rst,
+    input logic start, 
     
-    // ADMM variables - memory interfaces for trajectories and auxiliaries
     // State trajectory (x)
     output logic [ADDR_WIDTH-1:0] x_rdaddress,
     input logic [DATA_WIDTH_STATE-1:0] x_data_out, 
@@ -111,8 +108,6 @@ module dual_update #(
     logic [31:0] read_stage;            // Tracks memory read sequencing
     logic [31:0] write_stage;           // Tracks memory write sequencing
     
-    // Temporary storage for values read from memory
-
     logic [DATA_WIDTH-1:0] temp_u;
     logic [DATA_WIDTH-1:0] temp_z;
     logic [DATA_WIDTH-1:0] temp_x;
@@ -125,12 +120,10 @@ module dual_update #(
     logic [DATA_WIDTH-1:0] temp_R;
     logic [DATA_WIDTH-1:0] temp_Q;
     logic [DATA_WIDTH-1:0] temp_P;
-    
-    // Temporary computation variables
-    logic [DATA_WIDTH_STATE-1:0] temp_val_state;     // Temporary value for computations //making larger for now
-    logic [DATA_WIDTH_INPUT-1:0] temp_val_input;     // Temporary value for computations //making larger for now
-    logic [DATA_WIDTH_STATE-1:0] max_pri_res_u; // Maximum primal residual for inputs
-    logic [DATA_WIDTH_INPUT-1:0] max_pri_res_x; // Maximum primal residual for states
+
+    logic [DATA_WIDTH-1:0] temp_val;     
+    logic [DATA_WIDTH-1:0] max_pri_res_u; 
+    logic [DATA_WIDTH-1:0] max_pri_res_x; 
     
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin

@@ -41,6 +41,9 @@ module admm_solver #(
     logic solver_done;
     logic [31:0] current_iter;
     logic [31:0] active_horizon_reg; // INTERNAL REG ONLY
+    wire [31:0] active_horizon = active_horizon_reg;
+    logic [31:0] active_horizon_new;
+    logic active_horizon_wren;
     logic converged;
     
     // Memory signals for system matrices
@@ -139,6 +142,8 @@ module admm_solver #(
     // Residuals
     logic [DATA_WIDTH-1:0] pri_res_u, pri_res_x, dual_res;
     logic [DATA_WIDTH-1:0] pri_tol, dual_tol;
+
+    logic [DATA_WIDTH-1:0] pri_tol_new, dual_tol_new;
     
     // Bounds
     logic [DATA_WIDTH-1:0] u_min [INPUT_DIM];
@@ -155,6 +160,7 @@ module admm_solver #(
     
     // ADMM parameter
     logic [DATA_WIDTH-1:0] rho;
+    logic [DATA_WIDTH-1:0] rho_new;
     
     // Memory blocks for system matrices and trajectories using RAM modules
     
@@ -540,7 +546,6 @@ module admm_solver #(
         .y_data_out(y_data_out),
         .g_rdaddress(g_rdaddress),
         .g_data_out(g_data_out),
-        
         // Bounds
         .u_min(u_min),
         .u_max(u_max),
@@ -556,9 +561,9 @@ module admm_solver #(
         .v_wren(v_wren),
         
         // Previous values for residuals
-        .z_prev_wraddress(z_prev_wraddress),
-        .z_prev_data_in(z_prev_data_in),
-        .z_prev_wren(z_prev_wren),
+        //.z_prev_wraddress(z_prev_wraddress),
+        //.z_prev_data_in(z_prev_data_in),
+        //.z_prev_wren(z_prev_wren),
         
         // Configuration
         .active_horizon(active_horizon_reg),
@@ -801,6 +806,8 @@ module admm_solver #(
         .solver_done(solver_done),
         .current_iter(current_iter),
         .active_horizon(active_horizon_reg),
+        .active_horizon_new(active_horizon_new),
+	.active_horizon_wren(active_horizon_wren),
         .converged(converged),
         .start_solving(start_solving),
         
@@ -809,7 +816,9 @@ module admm_solver #(
         .pri_res_x(pri_res_x),
         .dual_res(dual_res),
         .pri_tol(pri_tol),
+	.pri_tol_new(pri_tol_new),
         .dual_tol(dual_tol),
+	.dual_tol_new(dual_tol_new),
         
         // ADMM parameter
         .rho(rho),

@@ -359,7 +359,7 @@ module admm_solver #(
     );
     
     // Instantiate solver stage 1 - X-Update (Riccati recursion and forward rollout)
-    solver_stage1 #(
+    primal_update #(
         .STATE_DIM(STATE_DIM),
         .INPUT_DIM(INPUT_DIM),
         .HORIZON(HORIZON),
@@ -418,7 +418,7 @@ module admm_solver #(
     );
     
     // Instantiate solver stage 2 - Z-Update (Projection)
-    solver_stage2 #(
+    slack_update #(
         .STATE_DIM(STATE_DIM),
         .INPUT_DIM(INPUT_DIM),
         .HORIZON(HORIZON),
@@ -465,7 +465,7 @@ module admm_solver #(
     );
     
     // Instantiate solver stage 3 - Y-Update (Dual variables)
-    solver_stage3 #(
+    dual_update #(
         .STATE_DIM(STATE_DIM),
         .INPUT_DIM(INPUT_DIM),
         .HORIZON(HORIZON),

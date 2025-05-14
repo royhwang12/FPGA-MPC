@@ -159,204 +159,306 @@ module admm_solver #(
     // Memory blocks for system matrices and trajectories using RAM modules
     
     // System matrices - A matrix (STATE_DIM x STATE_DIM)
-    RAM A_ram (
-        .clock(clk),
-        .data(A_data_in),
-        .rdaddress(A_rdaddress),
-        .wraddress(A_wraddress),
-        .wren(A_wren),
-        .q(A_data_out)
+    // A_ram (already provided)
+    soc_system_RAM A_ram (
+        .clk(clk),
+        .writedata(A_data_in),
+        .address(A_wren ? A_wraddress : A_rdaddress),
+        .write(A_wren),
+        .readdata(A_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // System matrices - B matrix (STATE_DIM x INPUT_DIM)
-    RAM B_ram (
-        .clock(clk),
-        .data(B_data_in),
-        .rdaddress(B_rdaddress),
-        .wraddress(B_wraddress),
-        .wren(B_wren),
-        .q(B_data_out)
+    soc_system_RAM B_ram (
+        .clk(clk),
+        .writedata(B_data_in),
+        .address(B_wren ? B_wraddress : B_rdaddress),
+        .write(B_wren),
+        .readdata(B_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // System matrices - Q matrix (STATE_DIM x STATE_DIM)
-    RAM Q_ram (
-        .clock(clk),
-        .data(Q_data_in),
-        .rdaddress(Q_rdaddress),
-        .wraddress(Q_wraddress),
-        .wren(Q_wren),
-        .q(Q_data_out)
+    soc_system_RAM Q_ram (
+        .clk(clk),
+        .writedata(Q_data_in),
+        .address(Q_wren ? Q_wraddress : Q_rdaddress),
+        .write(Q_wren),
+        .readdata(Q_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // System matrices - R matrix (INPUT_DIM x INPUT_DIM)
-    RAM R_ram (
-        .clock(clk),
-        .data(R_data_in),
-        .rdaddress(R_rdaddress),
-        .wraddress(R_wraddress),
-        .wren(R_wren),
-        .q(R_data_out)
+    soc_system_RAM R_ram (
+        .clk(clk),
+        .writedata(R_data_in),
+        .address(R_wren ? R_wraddress : R_rdaddress),
+        .write(R_wren),
+        .readdata(R_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Precomputed cache terms - K matrix (Kinf) (INPUT_DIM x STATE_DIM)
-    RAM K_ram (
-        .clock(clk),
-        .data(K_data_in),
-        .rdaddress(K_rdaddress),
-        .wraddress(K_wraddress),
-        .wren(K_wren),
-        .q(K_data_out)
+    soc_system_RAM K_ram (
+        .clk(clk),
+        .writedata(K_data_in),
+        .address(K_wren ? K_wraddress : K_rdaddress),
+        .write(K_wren),
+        .readdata(K_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Precomputed cache terms - C1 matrix ((R + B'*P*B)^-1) (INPUT_DIM x INPUT_DIM)
-    RAM C1_ram (
-        .clock(clk),
-        .data(C1_data_in),
-        .rdaddress(C1_rdaddress),
-        .wraddress(C1_wraddress),
-        .wren(C1_wren),
-        .q(C1_data_out)
+    soc_system_RAM C1_ram (
+        .clk(clk),
+        .writedata(C1_data_in),
+        .address(C1_wren ? C1_wraddress : C1_rdaddress),
+        .write(C1_wren),
+        .readdata(C1_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Precomputed cache terms - C2 matrix ((A - B*K)') (STATE_DIM x STATE_DIM)
-    RAM C2_ram (
-        .clock(clk),
-        .data(C2_data_in),
-        .rdaddress(C2_rdaddress),
-        .wraddress(C2_wraddress),
-        .wren(C2_wren),
-        .q(C2_data_out)
+    soc_system_RAM C2_ram (
+        .clk(clk),
+        .writedata(C2_data_in),
+        .address(C2_wren ? C2_wraddress : C2_rdaddress),
+        .write(C2_wren),
+        .readdata(C2_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Precomputed cache terms - P matrix (Pinf) (STATE_DIM x STATE_DIM)
-    RAM P_ram (
-        .clock(clk),
-        .data(P_data_in),
-        .rdaddress(P_rdaddress),
-        .wraddress(P_wraddress),
-        .wren(P_wren),
-        .q(P_data_out)
+    soc_system_RAM P_ram (
+        .clk(clk),
+        .writedata(P_data_in),
+        .address(P_wren ? P_wraddress : P_rdaddress),
+        .write(P_wren),
+        .readdata(P_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Trajectories - x trajectory (STATE_DIM x HORIZON)
-    RAM x_ram (
-        .clock(clk),
-        .data(x_data_in),
-        .rdaddress(x_rdaddress),
-        .wraddress(x_wraddress),
-        .wren(x_wren),
-        .q(x_data_out)
+    soc_system_RAM x_ram (
+        .clk(clk),
+        .writedata(x_data_in),
+        .address(x_wren ? x_wraddress : x_rdaddress),
+        .write(x_wren),
+        .readdata(x_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Trajectories - u trajectory (INPUT_DIM x (HORIZON-1))
-    RAM u_ram (
-        .clock(clk),
-        .data(u_data_in),
-        .rdaddress(u_rdaddress),
-        .wraddress(u_wraddress),
-        .wren(u_wren),
-        .q(u_data_out)
+    soc_system_RAM u_ram (
+        .clk(clk),
+        .writedata(u_data_in),
+        .address(u_wren ? u_wraddress : u_rdaddress),
+        .write(u_wren),
+        .readdata(u_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Trajectories - z trajectory (INPUT_DIM x (HORIZON-1))
-    RAM z_ram (
-        .clock(clk),
-        .data(z_data_in),
-        .rdaddress(z_rdaddress),
-        .wraddress(z_wraddress),
-        .wren(z_wren),
-        .q(z_data_out)
+    soc_system_RAM z_ram (
+        .clk(clk),
+        .writedata(z_data_in),
+        .address(z_wren ? z_wraddress : z_rdaddress),
+        .write(z_wren),
+        .readdata(z_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Trajectories - v trajectory (STATE_DIM x HORIZON)
-    RAM v_ram (
-        .clock(clk),
-        .data(v_data_in),
-        .rdaddress(v_rdaddress),
-        .wraddress(v_wraddress),
-        .wren(v_wren),
-        .q(v_data_out)
+    soc_system_RAM v_ram (
+        .clk(clk),
+        .writedata(v_data_in),
+        .address(v_wren ? v_wraddress : v_rdaddress),
+        .write(v_wren),
+        .readdata(v_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Previous values for residuals - z_prev (INPUT_DIM x (HORIZON-1))
-    RAM z_prev_ram (
-        .clock(clk),
-        .data(z_prev_data_in),
-        .rdaddress(z_prev_rdaddress),
-        .wraddress(z_prev_wraddress),
-        .wren(z_prev_wren),
-        .q(z_prev_data_out)
+    soc_system_RAM z_prev_ram (
+        .clk(clk),
+        .writedata(z_prev_data_in),
+        .address(z_prev_wren ? z_prev_wraddress : z_prev_rdaddress),
+        .write(z_prev_wren),
+        .readdata(z_prev_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Previous values for residuals - v_prev (STATE_DIM x HORIZON)
-    RAM v_prev_ram (
-        .clock(clk),
-        .data(v_prev_data_in),
-        .rdaddress(v_prev_rdaddress),
-        .wraddress(v_prev_wraddress),
-        .wren(v_prev_wren),
-        .q(v_prev_data_out)
+    soc_system_RAM v_prev_ram (
+        .clk(clk),
+        .writedata(v_prev_data_in),
+        .address(v_prev_wren ? v_prev_wraddress : v_prev_rdaddress),
+        .write(v_prev_wren),
+        .readdata(v_prev_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Dual variables - y (INPUT_DIM x (HORIZON-1))
-    RAM y_ram (
-        .clock(clk),
-        .data(y_data_in),
-        .rdaddress(y_rdaddress),
-        .wraddress(y_wraddress),
-        .wren(y_wren),
-        .q(y_data_out)
+    soc_system_RAM y_ram (
+        .clk(clk),
+        .writedata(y_data_in),
+        .address(y_wren ? y_wraddress : y_rdaddress),
+        .write(y_wren),
+        .readdata(y_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Dual variables - g (STATE_DIM x HORIZON)
-    RAM g_ram (
-        .clock(clk),
-        .data(g_data_in),
-        .rdaddress(g_rdaddress),
-        .wraddress(g_wraddress),
-        .wren(g_wren),
-        .q(g_data_out)
+    soc_system_RAM g_ram (
+        .clk(clk),
+        .writedata(g_data_in),
+        .address(g_wren ? g_wraddress : g_rdaddress),
+        .write(g_wren),
+        .readdata(g_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Linear cost terms - q (STATE_DIM x HORIZON)
-    RAM q_ram (
-        .clock(clk),
-        .data(q_data_in),
-        .rdaddress(q_rdaddress),
-        .wraddress(q_wraddress),
-        .wren(q_wren),
-        .q(q_data_out)
+    soc_system_RAM q_ram (
+        .clk(clk),
+        .writedata(q_data_in),
+        .address(q_wren ? q_wraddress : q_rdaddress),
+        .write(q_wren),
+        .readdata(q_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Linear cost terms - r (INPUT_DIM x (HORIZON-1))
-    RAM r_ram (
-        .clock(clk),
-        .data(r_data_in),
-        .rdaddress(r_rdaddress),
-        .wraddress(r_wraddress),
-        .wren(r_wren),
-        .q(r_data_out)
+    soc_system_RAM r_ram (
+        .clk(clk),
+        .writedata(r_data_in),
+        .address(r_wren ? r_wraddress : r_rdaddress),
+        .write(r_wren),
+        .readdata(r_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Linear cost terms - p (STATE_DIM x HORIZON)
-    RAM p_ram (
-        .clock(clk),
-        .data(p_data_in),
-        .rdaddress(p_rdaddress),
-        .wraddress(p_wraddress),
-        .wren(p_wren),
-        .q(p_data_out)
+    soc_system_RAM p_ram (
+        .clk(clk),
+        .writedata(p_data_in),
+        .address(p_wren ? p_wraddress : p_rdaddress),
+        .write(p_wren),
+        .readdata(p_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
-    
+
     // Linear cost terms - d (INPUT_DIM x (HORIZON-1))
-    RAM d_ram (
-        .clock(clk),
-        .data(d_data_in),
-        .rdaddress(d_rdaddress),
-        .wraddress(d_wraddress),
-        .wren(d_wren),
-        .q(d_data_out)
+    soc_system_RAM d_ram (
+        .clk(clk),
+        .writedata(d_data_in),
+        .address(d_wren ? d_wraddress : d_rdaddress),
+        .write(d_wren),
+        .readdata(d_data_out),
+        .reset(rst),
+        .chipselect(1'b1),
+        .clken(1'b1),
+        .freeze(1'b0),
+        .reset_req(1'b0),
+        .byteenable(2'b11)
     );
+
     
     // Instantiate solver stage 1 - X-Update (Riccati recursion & trajectory rollout)
     primal_update #(

@@ -1,38 +1,40 @@
 // Computes primal and dual residuals to check for ADMM convergence
 
+`timescale 1 ps / 1 ps
 module residual_calculator #(
-    parameter STATE_DIM = 6,             // Dimension of state vector (nx)
-    parameter INPUT_DIM = 3,             // Dimension of input vector (nu)
+    parameter STATE_DIM = 12,             // Dimension of state vector (nx)
+    parameter INPUT_DIM = 4,             // Dimension of input vector (nu)
     parameter HORIZON = 30,              // Maximum MPC horizon length (N)
-    parameter DATA_WIDTH = 64,           
-    parameter ADDR_WIDTH = 9             
+    parameter DATA_WIDTH_INPUT = 64, 
+    parameter DATA_WIDTH_STATE = 192, 
+    parameter ADDR_WIDTH = 9
 )(
     input logic clk,                     // Clock
     input logic rst,                     // Reset
     input logic start,                   // Start signal
     
     // Inputs for residual calculation
-    input logic [DATA_WIDTH-1:0] pri_res_u,    // Primal residual for inputs from dual_update
-    input logic [DATA_WIDTH-1:0] pri_res_x,    // Primal residual for states from dual_update
+    input logic [DATA_WIDTH_INPUT-1:0] pri_res_u,    // Primal residual for inputs from dual_update
+    input logic [DATA_WIDTH_STATE-1:0] pri_res_x,    // Primal residual for states from dual_update
     
     // Memory interfaces for z and z_prev
     // Current z values
     output logic [ADDR_WIDTH-1:0] z_rdaddress,
-    input logic [DATA_WIDTH-1:0] z_data_out,
+    input logic [DATA_WIDTH_STATE-1:0] z_data_out,  // z uses DATA_WIDTH_STATE
     
     // Previous z values
     output logic [ADDR_WIDTH-1:0] z_prev_rdaddress,
-    input logic [DATA_WIDTH-1:0] z_prev_data_out,
+    input logic [DATA_WIDTH_STATE-1:0] z_prev_data_out,  // z_prev uses DATA_WIDTH_STATE
     
     // Tolerance thresholds
-    input logic [DATA_WIDTH-1:0] pri_tol,      // Primal residual tolerance
-    input logic [DATA_WIDTH-1:0] dual_tol,     // Dual residual tolerance
+    input logic [DATA_WIDTH_INPUT-1:0] pri_tol,      // Primal residual tolerance
+    input logic [DATA_WIDTH_INPUT-1:0] dual_tol,     // Dual residual tolerance
     
     // Configuration
     input logic [31:0] active_horizon,  // Current horizon length to use
     
     // Outputs
-    output logic [DATA_WIDTH-1:0] dual_res,    // Dual residual 
+    output logic [DATA_WIDTH_INPUT-1:0] dual_res,    // Dual residual 
     output logic converged,                    // Convergence flag
     output logic done                          // Done signal
 );
@@ -53,12 +55,12 @@ module residual_calculator #(
     logic [31:0] read_stage;            // Tracks memory read sequencing
     
     // Temporary storage for values read from memory
-    logic [DATA_WIDTH-1:0] temp_z;
-    logic [DATA_WIDTH-1:0] temp_z_prev;
+    logic [DATA_WIDTH_STATE-1:0] temp_z;  // z uses DATA_WIDTH_STATE
+    logic [DATA_WIDTH_STATE-1:0] temp_z_prev;  // z_prev uses DATA_WIDTH_STATE
     
     // Temporary computation variables
-    logic [DATA_WIDTH-1:0] temp_diff;    // Temporary diff value for calculations
-    logic [DATA_WIDTH-1:0] max_dual_res; // Maximum dual residual 
+    logic [DATA_WIDTH_STATE-1:0] temp_diff;    // Temporary diff value for calculations
+    logic [DATA_WIDTH_INPUT-1:0] max_dual_res; // Maximum dual residual 
     
     // Convergence flags
     logic pri_converged_u;              

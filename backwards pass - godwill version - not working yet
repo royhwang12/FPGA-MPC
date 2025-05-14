@@ -1,0 +1,90 @@
+`timescale 1ns/1ps
+
+module backward_pass #(
+  parameter int STATE_DIM   = 12,
+  parameter int CONTROL_DIM = 4,
+  parameter int W           = 16
+)(
+  input  logic                         clk,
+  input  logic                         reset,
+  input  logic                         start,
+
+  // inputs for this time‐step
+  input  logic signed [W-1:0]          p_next   [STATE_DIM],         // p[:,k+1]
+  input  logic signed [W-1:0]          r_k      [CONTROL_DIM],       // r[:,k]
+  input  logic signed [W-1:0]          q_k      [STATE_DIM],         // q[:,k]
+
+  // Riccati cache matrices
+  input  logic signed [W-1:0]          B_mat    [STATE_DIM][CONTROL_DIM], // B
+  input  logic signed [W-1:0]          C1_mat   [CONTROL_DIM][CONTROL_DIM],// (R+ BᵀPinfB)^-1
+  input  logic signed [W-1:0]          C2_mat   [STATE_DIM][STATE_DIM],    // (A-BKinf)ᵀ
+  input  logic signed [W-1:0]          Kinf     [CONTROL_DIM][STATE_DIM],   // infinite‐horizon gain
+
+  // outputs for this time‐step
+  output logic signed [W-1:0]          d_k      [CONTROL_DIM],       // feedforward term
+  output logic signed [W-1:0]          p_out    [STATE_DIM],         // next p[:,k]
+
+  output logic                         done
+);
+
+  // Wide accumulators
+  logic signed [2*W-1:0] bt_p   [CONTROL_DIM];  // Bᵀ * p_next
+  logic signed [2*W-1:0] t1     [CONTROL_DIM];  // bt_p + r_k
+  logic signed [2*W-1:0] d_calc [CONTROL_DIM];  // C1 * t1
+
+  logic signed [2*W-1:0] c2_p   [STATE_DIM];    // C2 * p_next
+  logic signed [2*W-1:0] kt_r   [STATE_DIM];    // Kinfᵀ * r_k
+  logic signed [2*W-1:0] p_calc [STATE_DIM];    // q_k + c2_p - kt_r
+
+  // Combinational multiply–accumulate
+  always_comb begin
+    // --- compute Bᵀ * p_next and add r_k ---
+    for (int i = 0; i < CONTROL_DIM; i++) begin
+      bt_p[i] = '0;
+      for (int j = 0; j < STATE_DIM; j++)
+        bt_p[i] += B_mat[j][i] * p_next[j];
+      t1[i] = bt_p[i] + {{W{r_k[i][W-1]}}, r_k[i]};  // sign‐extend r_k
+    end
+
+    // --- compute d_calc = C1 * t1 ---
+    for (int i = 0; i < CONTROL_DIM; i++) begin
+      d_calc[i] = '0;
+      for (int k = 0; k < CONTROL_DIM; k++)
+        d_calc[i] += C1_mat[i][k] * t1[k];
+    end
+
+    // --- compute C2 * p_next and Kinfᵀ * r_k ---
+    for (int i = 0; i < STATE_DIM; i++) begin
+      c2_p[i] = '0;
+      for (int j = 0; j < STATE_DIM; j++)
+        c2_p[i] += C2_mat[i][j] * p_next[j];
+
+      kt_r[i] = '0;
+      for (int k = 0; k < CONTROL_DIM; k++)
+        kt_r[i] += Kinf[k][i] * r_k[k];
+    end
+
+    // --- form p_calc = q_k + c2_p - kt_r ---
+    for (int i = 0; i < STATE_DIM; i++) begin
+      p_calc[i] = {{W{q_k[i][W-1]}}, q_k[i]} + c2_p[i] - kt_r[i];
+    end
+  end
+
+  // Sequential register stage
+  always_ff @(posedge clk or posedge reset) begin
+    if (reset) begin
+      for (int i = 0; i < CONTROL_DIM; i++) d_k[i]   <= '0;
+      for (int i = 0; i < STATE_DIM;   i++) p_out[i] <= '0;
+      done <= 1'b0;
+    end else if (start) begin
+      for (int i = 0; i < CONTROL_DIM; i++)
+        d_k[i]   <= d_calc[i][W-1:0];
+      for (int i = 0; i < STATE_DIM;   i++)
+        p_out[i] <= p_calc[i][W-1:0];
+      done <= 1'b1;
+    end else begin
+      done <= 1'b0;
+    end
+  end
+
+endmodule

@@ -1,6 +1,6 @@
 // Implements constraint projection for both u and x variables
 
-`timescale 1 ps / 1 ps
+
 module slack_update #(
     parameter STATE_DIM = 12,             // Dimension of state vector (nx)
     parameter INPUT_DIM = 4,             // Dimension of input vector (nu)

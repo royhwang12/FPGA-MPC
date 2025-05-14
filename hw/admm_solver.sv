@@ -1,5 +1,5 @@
 module admm_solver #(
-    parameter STATE_DIM      = 12,        // Dimension of state vector (nx)
+    parameter STATE_DIM     = 12,        // Dimension of state vector (nx)
     parameter INPUT_DIM     = 4,         // Dimension of input vector (nu)
     parameter HORIZON       = 30,        // Maximum MPC horizon length (N)
     parameter MAX_ITER      = 100,       // Maximum ADMM iterations
@@ -657,21 +657,16 @@ module admm_solver #(
         .rst(rst),
         .start(residual_calc_start),
         
-        // Residual inputs from stage 3
+        // Residual inputs from dual_update
         .pri_res_u(pri_res_u),
         .pri_res_x(pri_res_x),
         
-        // Z and Z_prev for dual residual
         .z_rdaddress(z_rdaddress),
         .z_data_out(z_data_out),
         .z_prev_rdaddress(z_prev_rdaddress),
         .z_prev_data_out(z_prev_data_out),
-        
-        // Tolerance thresholds
         .pri_tol(pri_tol),
         .dual_tol(dual_tol),
-        
-        // Configuration
         .active_horizon(active_horizon),
         
         // Outputs
@@ -694,12 +689,11 @@ module admm_solver #(
             dual_update_start <= 0;
             residual_calc_start <= 0;
             
-            // Initialize tolerances (default values)
-            pri_tol <= 64'h3F50624DD2F1A9FC; // 0.001 in double precision
-            dual_tol <= 64'h3F50624DD2F1A9FC; // 0.001 in double precision
+            // Initialize tolerances
+            pri_tol <= 16'h0080; // 0.001 in 16-bit fixed point
+            dual_tol <= 16'h0080; 
             
-            // Initialize rho parameter
-            rho <= 64'h3FF0000000000000; // 1.0 in double precision
+            rho <= 16'h1000; // 1.0
             
         end else begin
             // Default values for control signals

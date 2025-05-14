@@ -43,7 +43,6 @@ module dual_update #(
     output logic [DATA_WIDTH_STATE-1:0] g_data_in,
     output logic g_wren,
 
-    // Linear cost terms - memory interfaces
     // Input cost terms (r)
     output logic [ADDR_WIDTH-1:0] r_rdaddress,
     input logic [DATA_WIDTH-1:0] r_data_out,
@@ -81,13 +80,12 @@ module dual_update #(
     input logic [DATA_WIDTH-1:0] rho,
 
     // Residual calculation outputs
-    output logic [DATA_WIDTH_INPUT-1:0] pri_res_u,                           // Primal residual for inputs
-    output logic [DATA_WIDTH_STATE-1:0] pri_res_x,                           // Primal residual for states
+    output logic [DATA_WIDTH_INPUT-1:0] pri_res_u,                          
+    output logic [DATA_WIDTH_STATE-1:0] pri_res_x,                           
     
-    // Configuration
     input logic [31:0] active_horizon,  // Current horizon length to use
     
-    output logic done                    // Done signal
+    output logic done
 );
 
     // State machine states

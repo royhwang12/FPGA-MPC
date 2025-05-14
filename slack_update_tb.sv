@@ -55,8 +55,8 @@ module slack_update_tb;
     #20;
     reset = 0;
 
-    u_k = '{16'sd1, 16'sd2, 16'sd3, 16'sd4, 16'sd5, 16'sd6};
-    g_k = '{16'sd6, 16'sd5, 16'sd4, 16'sd3, 16'sd2, 16'sd1};
+    u_k = '{16'sd1, 16'sd2, 16'sd3, 16'sd4};
+    g_k = '{16'sd4, 16'sd3, 16'sd2, 16'sd1};
 
     x_k = '{16'sd1, 16'sd2, 16'sd3, 16'sd4,
             16'sd5, 16'sd6, 16'sd7, 16'sd8,

@@ -1,0 +1,138 @@
+`timescale 1ps/1ps
+
+module tb_dual_update_alex;
+  //--- Parameters for this small test
+  localparam STATE_DIM         = 2;
+  localparam INPUT_DIM         = 2;
+  localparam HORIZON           = 3;
+  localparam DATA_WIDTH_INPUT  = 8;
+  localparam DATA_WIDTH_STATE  = 16;
+  localparam ADDR_WIDTH        = 4;
+
+  //--- Clock, reset, start
+  logic clk = 0;
+  always #5 clk = ~clk;
+  logic rst, start;
+
+  //--- DUT memory?interface signals
+  logic [ADDR_WIDTH-1:0] x_rdaddress, u_rdaddress, z_rdaddress, v_rdaddress;
+  logic [ADDR_WIDTH-1:0] y_rdaddress, g_rdaddress;
+  logic [ADDR_WIDTH-1:0] y_wraddress, g_wraddress;
+  logic [DATA_WIDTH_INPUT-1:0]  u_data_out, z_data_out, y_data_out;
+  logic [DATA_WIDTH_STATE-1:0]  x_data_out, v_data_out, g_data_out;
+  logic [DATA_WIDTH_INPUT-1:0]  y_data_in;
+  logic [DATA_WIDTH_STATE-1:0]  g_data_in;
+  logic y_wren, g_wren;
+  logic [31:0] active_horizon;
+  logic [DATA_WIDTH_INPUT-1:0]  pri_res_u;
+  logic [DATA_WIDTH_STATE-1:0]  pri_res_x;
+  logic done;
+
+  //--- Instantiate DUT
+  dual_update_alex #(
+    .STATE_DIM(STATE_DIM),
+    .INPUT_DIM(INPUT_DIM),
+    .HORIZON(HORIZON),
+    .DATA_WIDTH_INPUT(DATA_WIDTH_INPUT),
+    .DATA_WIDTH_STATE(DATA_WIDTH_STATE),
+    .ADDR_WIDTH(ADDR_WIDTH)
+  ) dut (
+    .clk(clk), .rst(rst), .start(start),
+    .x_rdaddress(x_rdaddress), .x_data_out(x_data_out),
+    .u_rdaddress(u_rdaddress), .u_data_out(u_data_out),
+    .z_rdaddress(z_rdaddress), .z_data_out(z_data_out),
+    .v_rdaddress(v_rdaddress), .v_data_out(v_data_out),
+    .y_rdaddress(y_rdaddress), .y_data_out(y_data_out),
+    .y_wraddress(y_wraddress), .y_data_in(y_data_in), .y_wren(y_wren),
+    .g_rdaddress(g_rdaddress), .g_data_out(g_data_out),
+    .g_wraddress(g_wraddress), .g_data_in(g_data_in), .g_wren(g_wren),
+    .pri_res_u(pri_res_u), .pri_res_x(pri_res_x),
+    .active_horizon(active_horizon),
+    .done(done)
+  );
+
+  //--- Behavioral ?memories?
+  reg [DATA_WIDTH_INPUT-1:0]  u_mem[(HORIZON*INPUT_DIM)-1:0];
+  reg [DATA_WIDTH_INPUT-1:0]  z_mem[(HORIZON*INPUT_DIM)-1:0];
+  reg [DATA_WIDTH_INPUT-1:0]  y_mem[((HORIZON-1)*INPUT_DIM)-1:0];
+  reg [DATA_WIDTH_STATE-1:0]  x_mem[(HORIZON*STATE_DIM)-1:0];
+  reg [DATA_WIDTH_STATE-1:0]  v_mem[(HORIZON*STATE_DIM)-1:0];
+  reg [DATA_WIDTH_STATE-1:0]  g_mem[(HORIZON*STATE_DIM)-1:0];
+
+  //--- Expected-value arrays
+  reg [DATA_WIDTH_INPUT-1:0]  y_expected[((HORIZON-1)*INPUT_DIM)-1:0];
+  reg [DATA_WIDTH_STATE-1:0]  g_expected[(HORIZON*STATE_DIM)-1:0];
+
+  //--- Drive DUT?s read-data ports
+  always_comb begin
+    u_data_out = u_mem[u_rdaddress];
+    z_data_out = z_mem[z_rdaddress];
+    y_data_out = y_mem[y_rdaddress];
+    x_data_out = x_mem[x_rdaddress];
+    v_data_out = v_mem[v_rdaddress];
+    g_data_out = g_mem[g_rdaddress];
+  end
+
+  //--- Capture DUT?s writes
+  always_ff @(posedge clk) begin
+    if (y_wren) y_mem[y_wraddress] <= y_data_in;
+    if (g_wren) g_mem[g_wraddress] <= g_data_in;
+  end
+
+  initial begin
+    integer idx;
+
+    // Zero-initialize all memories
+    for (idx = 0; idx < HORIZON*INPUT_DIM;    idx++) u_mem[idx] = 0;
+    for (idx = 0; idx < HORIZON*INPUT_DIM;    idx++) z_mem[idx] = 0;
+    for (idx = 0; idx < (HORIZON-1)*INPUT_DIM; idx++) y_mem[idx] = 0;
+    for (idx = 0; idx < HORIZON*STATE_DIM;    idx++) x_mem[idx] = 0;
+    for (idx = 0; idx < HORIZON*STATE_DIM;    idx++) v_mem[idx] = 0;
+    for (idx = 0; idx < HORIZON*STATE_DIM;    idx++) g_mem[idx] = 0;
+
+    // Fill sample inputs
+    u_mem[0]=1;  u_mem[1]=2;  u_mem[2]=3;  u_mem[3]=4;
+    z_mem[0]=0;  z_mem[1]=1;  z_mem[2]=1;  z_mem[3]=1;
+    x_mem[0]=10; x_mem[1]=20; x_mem[2]=30; x_mem[3]=40; x_mem[4]=50; x_mem[5]=60;
+    v_mem[0]=5;  v_mem[1]=15; v_mem[2]=25; v_mem[3]=35; v_mem[4]=45; v_mem[5]=55;
+
+    // Compute expected y = u?z for k=0,1  ? [1,1,2,3]
+    y_expected[0]=1;  y_expected[1]=1;
+    y_expected[2]=2;  y_expected[3]=3;
+    // Compute expected g = x?v for k=0,1,2 ? all 5
+    for (idx=0; idx < HORIZON*STATE_DIM; idx++)
+      g_expected[idx] = 5;
+
+    // Start the DUT
+    rst = 1; start = 0; active_horizon = HORIZON;
+    #20 
+rst = 0;
+    #20 
+start = 1;
+    #10 
+start = 0;
+
+    // Wait for completion
+    wait(done);
+    #20;
+
+    //--- Print actual vs expected
+    $display("\n=== y_mem after DUT ===");
+    for (idx = 0; idx < (HORIZON-1)*INPUT_DIM; idx++) begin
+      $display(" y_mem[%0d] = %0d (expected %0d)",
+               idx, y_mem[idx], y_expected[idx]);
+    end
+
+    $display("\n=== g_mem after DUT ===");
+    for (idx = 0; idx < HORIZON*STATE_DIM; idx++) begin
+      $display(" g_mem[%0d] = %0d (expected %0d)",
+               idx, g_mem[idx], g_expected[idx]);
+    end
+
+    $display("\n=== Primal residuals ===");
+    $display(" pri_res_u = %0d (expected %0d)", pri_res_u, 3);
+    $display(" pri_res_x = %0d (expected %0d)", pri_res_x, 5);
+
+    $finish;
+  end
+endmodule

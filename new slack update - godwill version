@@ -1,0 +1,86 @@
+`timescale 1ns/1ps
+
+module slack_update #(
+  parameter int STATE_DIM   = 12,
+  parameter int CONTROL_DIM = 4,
+  parameter int W           = 16
+)(
+  input  logic                   clk,
+  input  logic                   reset,
+  input  logic                   start,
+
+  // Flattened inputs
+  input  logic signed [W*STATE_DIM-1:0]   x_k_flat,
+  input  logic signed [W*STATE_DIM-1:0]   y_k_flat,
+  input  logic signed [W*CONTROL_DIM-1:0] u_k_flat,
+  input  logic signed [W*CONTROL_DIM-1:0] g_k_flat,
+
+  input  logic signed [W-1:0]    x_min,
+  input  logic signed [W-1:0]    x_max,
+  input  logic signed [W-1:0]    u_min,
+  input  logic signed [W-1:0]    u_max,
+
+  output logic signed [W*STATE_DIM-1:0]   v_k_flat,
+  output logic signed [W*CONTROL_DIM-1:0] z_k_flat,
+  output logic                            done
+);
+
+  logic signed [W-1:0] x_k   [STATE_DIM];
+  logic signed [W-1:0] y_k   [STATE_DIM];
+  logic signed [W-1:0] u_k   [CONTROL_DIM];
+  logic signed [W-1:0] g_k   [CONTROL_DIM];
+
+  logic signed [W-1:0] v_calc[STATE_DIM];
+  logic signed [W-1:0] z_calc[CONTROL_DIM];
+  logic signed [W-1:0] v_k   [STATE_DIM];
+  logic signed [W-1:0] z_k   [CONTROL_DIM];
+
+  // Unpack flattened inputs
+  always_comb begin
+    for (int i = 0; i < STATE_DIM; i++) begin
+      x_k[i] = x_k_flat[i*W +: W];
+      y_k[i] = y_k_flat[i*W +: W];
+    end
+    for (int i = 0; i < CONTROL_DIM; i++) begin
+      u_k[i] = u_k_flat[i*W +: W];
+      g_k[i] = g_k_flat[i*W +: W];
+    end
+  end
+
+  // Combinational slack update
+  generate
+    genvar i;
+    for (i = 0; i < STATE_DIM; i++) begin : STATE_CLIP
+      logic signed [W-1:0] tmp;
+      assign tmp       = x_k[i] + y_k[i];
+      assign v_calc[i] = (tmp < x_min) ? x_min : (tmp > x_max) ? x_max : tmp;
+    end
+    for (i = 0; i < CONTROL_DIM; i++) begin : CTRL_CLIP
+      logic signed [W-1:0] tmp2;
+      assign tmp2      = u_k[i] + g_k[i];
+      assign z_calc[i] = (tmp2 < u_min) ? u_min : (tmp2 > u_max) ? u_max : tmp2;
+    end
+  endgenerate
+
+  // Sequential register stage
+  always_ff @(posedge clk or posedge reset) begin
+    if (reset) begin
+      for (int i = 0; i < STATE_DIM; i++) v_k[i] <= '0;
+      for (int i = 0; i < CONTROL_DIM; i++) z_k[i] <= '0;
+      done <= 1'b0;
+    end else if (start) begin
+      for (int i = 0; i < STATE_DIM; i++) v_k[i] <= v_calc[i];
+      for (int i = 0; i < CONTROL_DIM; i++) z_k[i] <= z_calc[i];
+      done <= 1'b1;
+    end else begin
+      done <= 1'b0;
+    end
+  end
+
+  // Pack outputs
+  always_comb begin
+    for (int i = 0; i < STATE_DIM; i++) v_k_flat[i*W +: W] = v_k[i];
+    for (int i = 0; i < CONTROL_DIM; i++) z_k_flat[i*W +: W] = z_k[i];
+  end
+
+endmodule

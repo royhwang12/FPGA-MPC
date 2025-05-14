@@ -1,0 +1,149 @@
+`timescale 1ns/1ps
+
+module forward_primal_update_seq #(
+  parameter int STATE_DIM   = 12,
+  parameter int CONTROL_DIM = 4,
+  parameter int W           = 16
+)(
+  input  logic                         clk,
+  input  logic                         reset,
+  input  logic                         start,
+
+  // Flattened inputs
+  input  logic signed [W*STATE_DIM-1:0]        x_k_flat,
+  input  logic signed [W*CONTROL_DIM-1:0]      d_k_flat,
+  input  logic signed [W*CONTROL_DIM*STATE_DIM-1:0] Kinf_flat,
+  input  logic signed [W*STATE_DIM*STATE_DIM-1:0]   A_mat_flat,
+  input  logic signed [W*STATE_DIM*CONTROL_DIM-1:0] B_mat_flat,
+
+  // Flattened outputs
+  output logic signed [W*CONTROL_DIM-1:0]      u_k_flat,
+  output logic signed [W*STATE_DIM-1:0]        x_next_flat,
+  output logic                                done
+);
+
+  // Internal unpacked arrays
+  logic signed [W-1:0] x_k   [STATE_DIM];
+  logic signed [W-1:0] d_k   [CONTROL_DIM];
+  logic signed [W-1:0] Kinf  [CONTROL_DIM][STATE_DIM];
+  logic signed [W-1:0] A_mat [STATE_DIM][STATE_DIM];
+  logic signed [W-1:0] B_mat [STATE_DIM][CONTROL_DIM];
+
+  logic [$clog2( (CONTROL_DIM>STATE_DIM)?CONTROL_DIM:STATE_DIM)-1:0] idx_col;
+  logic [$clog2(CONTROL_DIM)-1:0] idx_ctrl;
+  logic [$clog2(STATE_DIM)-1:0] idx_stat;
+  typedef enum logic [3:0] {IDLE, U_ACC, U_STORE, AX_ACC, AX_STORE, BU_ACC, BU_STORE, COMBINE, DONE_STATE} state_t;
+  state_t state;
+
+  logic signed [2*W-1:0] acc;
+  logic signed [W-1:0] a_x [STATE_DIM];
+  logic signed [W-1:0] b_u [STATE_DIM];
+  logic signed [W-1:0] u_k [CONTROL_DIM];
+  logic signed [W-1:0] x_next [STATE_DIM];
+
+  // Unpack flattened inputs
+  always_comb begin
+    for (int i = 0; i < STATE_DIM; i++)
+      x_k[i] = x_k_flat[i*W +: W];
+    for (int i = 0; i < CONTROL_DIM; i++)
+      d_k[i] = d_k_flat[i*W +: W];
+
+    for (int i = 0; i < CONTROL_DIM; i++)
+      for (int j = 0; j < STATE_DIM; j++)
+        Kinf[i][j] = Kinf_flat[(i*STATE_DIM + j)*W +: W];
+
+    for (int i = 0; i < STATE_DIM; i++)
+      for (int j = 0; j < STATE_DIM; j++)
+        A_mat[i][j] = A_mat_flat[(i*STATE_DIM + j)*W +: W];
+
+    for (int i = 0; i < STATE_DIM; i++)
+      for (int j = 0; j < CONTROL_DIM; j++)
+        B_mat[i][j] = B_mat_flat[(i*CONTROL_DIM + j)*W +: W];
+  end
+
+  // FSM and arithmetic
+  always_ff @(posedge clk or posedge reset) begin
+    if (reset) begin
+      state     <= IDLE;
+      idx_ctrl  <= '0;
+      idx_stat  <= '0;
+      idx_col   <= '0;
+      acc       <= '0;
+      done      <= 1'b0;
+      for (int i = 0; i < CONTROL_DIM; i++) u_k[i] <= '0;
+      for (int i = 0; i < STATE_DIM;   i++) x_next[i] <= '0;
+    end else begin
+      case (state)
+        // wait for start
+        IDLE: if (start) begin done<=0; idx_ctrl<=0; idx_col<=0; acc<=0; state<=U_ACC; end
+        // accumulate Kinf·x_k
+        U_ACC: begin
+          acc <= acc + Kinf[idx_ctrl][idx_col]*x_k[idx_col];
+          if (idx_col == STATE_DIM-1) state<=U_STORE;
+          idx_col <= idx_col + 1;
+        end
+        U_STORE: begin
+          u_k[idx_ctrl] <= -acc[W-1:0] - d_k[idx_ctrl];
+          if (idx_ctrl == CONTROL_DIM-1) begin
+            idx_stat<=0; idx_col<=0; acc<=0; state<=AX_ACC;
+          end else begin
+            idx_ctrl<=idx_ctrl+1; idx_col<=0; acc<=0; state<=U_ACC;
+          end
+        end
+        AX_ACC: begin
+          acc <= acc + A_mat[idx_stat][idx_col]*x_k[idx_col];
+          if (idx_col == STATE_DIM-1) state<=AX_STORE;
+          idx_col<=idx_col+1;
+        end
+        AX_STORE: begin
+          a_x[idx_stat] <= acc[W-1:0];
+          if (idx_stat == STATE_DIM-1) begin
+		//idx_stat<=0; acc<=0; state<=BU_ACC;
+		idx_stat<=0; idx_col<=0; acc<=0; state<=BU_ACC;
+		end else begin
+		idx_stat<=idx_stat+1; idx_col<=0; acc<=0; state<=AX_ACC; end
+        end
+        BU_ACC: begin
+          acc <= acc + B_mat[idx_stat][idx_col]*u_k[idx_col];
+          if (idx_col == CONTROL_DIM-1) state<=BU_STORE;
+          idx_col<=idx_col+1;
+        end
+        BU_STORE: begin
+          b_u[idx_stat] <= acc[W-1:0];
+          if (idx_stat == STATE_DIM-1) begin
+		//idx_stat<=0; state<=COMBINE;
+		idx_stat<=0; idx_col<=0; state<=COMBINE;
+		end else begin idx_stat<=idx_stat+1; idx_col<=0; acc<=0; state<=BU_ACC; end
+        end
+        COMBINE: begin
+          x_next[idx_stat] <= a_x[idx_stat] + b_u[idx_stat];
+          if (idx_stat == STATE_DIM-1) begin done<=1; state<=DONE_STATE; end else idx_stat<=idx_stat+1;
+        end
+        DONE_STATE: if (!start) state<=IDLE;
+        default: state<=IDLE;
+      endcase
+    end
+  end
+/*
+  // Pack outputs
+  always_comb begin
+    for (int i = 0; i < CONTROL_DIM; i++) u_k_flat[i*W +: W] = u_k[i];
+    for (int i = 0; i < STATE_DIM;   i++) x_next_flat[i*W +: W] = x_next[i];
+  end
+*/
+
+// Pack outputs (clear bus first to avoid X?s)
+
+always_comb begin
+  u_k_flat    = '0;   // <<? clear all bits
+  x_next_flat = '0;   // <<? clear all bits
+
+  for (int i = 0; i < CONTROL_DIM; i++)
+    u_k_flat[i*W +: W]    = u_k[i];
+
+  for (int i = 0; i < STATE_DIM;   i++)
+    x_next_flat[i*W +: W] = x_next[i];
+end
+
+
+endmodule

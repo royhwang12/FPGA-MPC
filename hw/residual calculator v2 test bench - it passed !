@@ -1,0 +1,118 @@
+`timescale 1ns/1ps
+
+module tb_residual_calculator_alex;
+
+  //-------------------------------------------------------------------------
+  // Override parameters for a small test
+  //-------------------------------------------------------------------------
+  localparam integer STATE_DIM   = 2;
+  localparam integer INPUT_DIM   = 2;
+  localparam integer HORIZON     = 3;
+  localparam integer DATA_WIDTH  = 16;
+  localparam integer FRAC_BITS   = 8;
+  localparam integer ADDR_WIDTH  = 2;
+
+  //-------------------------------------------------------------------------
+  // Testbench signals
+  //-------------------------------------------------------------------------
+  logic                      clk;
+  logic                      rst;
+  logic                      start;
+  logic [DATA_WIDTH-1:0]     pri_res_u;
+  logic [DATA_WIDTH-1:0]     pri_res_x;
+  logic [ADDR_WIDTH-1:0]     z_rdaddress;
+  logic [ADDR_WIDTH-1:0]     z_prev_rdaddress;
+  logic [DATA_WIDTH-1:0]     z_data_out;
+  logic [DATA_WIDTH-1:0]     z_prev_data_out;
+  logic [DATA_WIDTH-1:0]     pri_tol;
+  logic [DATA_WIDTH-1:0]     dual_tol;
+  logic [31:0]               active_horizon;
+  logic [DATA_WIDTH-1:0]     dual_res;
+  logic                      converged;
+  logic                      done;
+
+  //-------------------------------------------------------------------------
+  // Simple memories for z and z_prev
+  //-------------------------------------------------------------------------
+  reg [DATA_WIDTH-1:0] z_mem     [0:INPUT_DIM*HORIZON-2];
+  reg [DATA_WIDTH-1:0] z_prev_mem[0:INPUT_DIM*HORIZON-2];
+
+  // Drive data_out combinationally
+  assign z_data_out      = z_mem[z_rdaddress];
+  assign z_prev_data_out = z_prev_mem[z_prev_rdaddress];
+
+  //-------------------------------------------------------------------------
+  // Instantiate DUT
+  //-------------------------------------------------------------------------
+  residual_calculator_alex #(
+    .STATE_DIM   (STATE_DIM),
+    .INPUT_DIM   (INPUT_DIM),
+    .HORIZON     (HORIZON),
+    .DATA_WIDTH  (DATA_WIDTH),
+    .FRAC_BITS   (FRAC_BITS),
+    .ADDR_WIDTH  (ADDR_WIDTH)
+  ) dut (
+    .clk             (clk),
+    .rst             (rst),
+    .start           (start),
+    .pri_res_u       (pri_res_u),
+    .pri_res_x       (pri_res_x),
+    .z_rdaddress     (z_rdaddress),
+    .z_data_out      (z_data_out),
+    .z_prev_rdaddress(z_prev_rdaddress),
+    .z_prev_data_out (z_prev_data_out),
+    .pri_tol         (pri_tol),
+    .dual_tol        (dual_tol),
+    .active_horizon  (active_horizon),
+    .dual_res        (dual_res),
+    .converged       (converged),
+    .done            (done)
+  );
+
+  //-------------------------------------------------------------------------
+  // Clock generator
+  //-------------------------------------------------------------------------
+  initial clk = 0;
+  always #5 clk = ~clk;
+
+  //-------------------------------------------------------------------------
+  // Test sequence
+  //-------------------------------------------------------------------------
+  initial begin
+    // Reset
+    rst = 1;  start = 0;
+    #20 rst = 0;
+
+    // Initialize memories:
+    // index = k*INPUT_DIM + i
+    // { z_prev_mem[0], z_prev_mem[1], z_prev_mem[2], z_prev_mem[3] } = {1,4,2,7}
+    // { z_mem[0],      z_mem[1],      z_mem[2],      z_mem[3] }      = {3,1,8,5}
+    z_prev_mem[0] = 16'd1;  z_mem[0] = 16'd3;
+    z_prev_mem[1] = 16'd4;  z_mem[1] = 16'd1;
+    z_prev_mem[2] = 16'd2;  z_mem[2] = 16'd8;
+    z_prev_mem[3] = 16'd7;  z_mem[3] = 16'd5;
+
+    // Set residual inputs and tolerances
+    pri_res_u      = 16'd5;  // ≤ pri_tol → pri_converged_u = 1
+    pri_res_x      = 16'd10; // >  pri_tol → pri_converged_x = 0
+    pri_tol        = 16'd8;
+    dual_tol       = 16'd6;
+    active_horizon = 3;
+
+    // Pulse start
+    #10 start = 1;
+    #10 start = 0;
+
+    // Wait until done
+    wait(done);
+
+    // Display results
+    $display("=== Simulation Results ===");
+    $display("dual_res   = %0d  (expected 6)", dual_res);
+    $display("converged  = %0b  (expected 0)", converged);
+    $display("done       = %0b  (expected 1)", done);
+
+    #10 $finish;
+  end
+
+endmodule

@@ -1,0 +1,115 @@
+`timescale 1ns/1ps
+
+module backward_pass_tb;
+  // parameters must match DUT
+  localparam int STATE_DIM   = 12;
+  localparam int CONTROL_DIM = 4;
+  localparam int W           = 16;
+
+  // clock & control
+  reg                         clk;
+  reg                         reset;
+  reg                         start;
+  wire                        done;
+
+  // flattened inputs
+  reg signed [W*STATE_DIM-1:0]       p_next_flat;
+  reg signed [W*CONTROL_DIM-1:0]     r_k_flat;
+  reg signed [W*STATE_DIM-1:0]       q_k_flat;
+  reg signed [W*STATE_DIM*CONTROL_DIM-1:0] B_flat;
+  reg signed [W*CONTROL_DIM*CONTROL_DIM-1:0] C1_flat;
+  reg signed [W*STATE_DIM*STATE_DIM-1:0]     C2_flat;
+  reg signed [W*CONTROL_DIM*STATE_DIM-1:0]   Kinf_flat;
+
+  // flattened outputs
+  wire signed [W*CONTROL_DIM-1:0]   d_k_flat;
+  wire signed [W*STATE_DIM-1:0]     p_out_flat;
+
+  // instantiate DUT
+  backward_pass #(
+    .STATE_DIM(STATE_DIM),
+    .CONTROL_DIM(CONTROL_DIM),
+    .W(W)
+  ) dut (
+    .clk        (clk),
+    .reset      (reset),
+    .start      (start),
+    .p_next_flat(p_next_flat),
+    .r_k_flat   (r_k_flat),
+    .q_k_flat   (q_k_flat),
+    .B_flat     (B_flat),
+    .C1_flat    (C1_flat),
+    .C2_flat    (C2_flat),
+    .Kinf_flat  (Kinf_flat),
+    .d_k_flat   (d_k_flat),
+    .p_out_flat (p_out_flat),
+    .done       (done)
+  );
+
+  // clock generation: 100 MHz
+  initial clk = 0;
+  always #5 clk = ~clk;
+
+  integer i, j;
+
+  initial begin
+    // reset
+    reset = 1; start = 0;
+    #20;
+    reset = 0;
+
+    // initialize p_next_flat = [1,2,...,STATE_DIM]
+    for (i = 0; i < STATE_DIM; i++)
+      p_next_flat[i*W +: W] = i + 1;
+
+    // initialize r_k_flat = all ones
+    for (i = 0; i < CONTROL_DIM; i++)
+      r_k_flat[i*W +: W] = 1;
+
+    // initialize q_k_flat = all zeros
+    for (i = 0; i < STATE_DIM; i++)
+      q_k_flat[i*W +: W] = 0;
+
+    // B_flat = identity on first CONTROL_DIM rows
+    for (i = 0; i < STATE_DIM*CONTROL_DIM; i++) begin
+      B_flat[i*W +: W] = 0;
+    end
+    for (i = 0; i < CONTROL_DIM; i++)
+      B_flat[(i*CONTROL_DIM + i)*W +: W] = 1;
+
+    // C1_flat = identity (CONTROL_DIM×CONTROL_DIM)
+    for (i = 0; i < CONTROL_DIM; i++)
+      for (j = 0; j < CONTROL_DIM; j++)
+        C1_flat[(i*CONTROL_DIM + j)*W +: W] = (i == j) ? 1 : 0;
+
+    // C2_flat = identity (STATE_DIM×STATE_DIM)
+    for (i = 0; i < STATE_DIM; i++)
+      for (j = 0; j < STATE_DIM; j++)
+        C2_flat[(i*STATE_DIM + j)*W +: W] = (i == j) ? 1 : 0;
+
+    // Kinf_flat = all zeros
+    for (i = 0; i < CONTROL_DIM*STATE_DIM; i++)
+      Kinf_flat[i*W +: W] = 0;
+
+    // pulse start
+    #10 start = 1;
+    #10 start = 0;
+
+    // wait for done
+    wait(done);
+
+    // display d_k_flat
+    $display("--- d_k (feedforward) ---");
+    for (i = 0; i < CONTROL_DIM; i++) begin
+      $display("d_k[%0d] = %0d", i, d_k_flat[i*W +: W]);
+    end
+
+    // display p_out_flat
+    $display("--- p_out (linear term) ---");
+    for (i = 0; i < STATE_DIM; i++) begin
+      $display("p_out[%0d] = %0d", i, p_out_flat[i*W +: W]);
+    end
+
+    #20 $finish;
+  end
+endmodule

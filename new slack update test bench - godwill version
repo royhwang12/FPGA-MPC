@@ -1,0 +1,93 @@
+`timescale 1ns/1ps
+
+module slack_update_tb;
+  parameter STATE_DIM   = 12;
+  parameter CONTROL_DIM = 4;
+  parameter W           = 16;
+
+  logic clk, reset, start, done;
+
+  typedef logic signed [W-1:0] fixed_t;
+
+  fixed_t x_k [STATE_DIM], y_k [STATE_DIM];
+  fixed_t u_k [CONTROL_DIM], g_k [CONTROL_DIM];
+  fixed_t v_k [STATE_DIM], z_k [CONTROL_DIM];
+
+  fixed_t x_min, x_max, u_min, u_max;
+
+  logic signed [W*STATE_DIM-1:0]   x_k_flat, y_k_flat;
+  logic signed [W*CONTROL_DIM-1:0] u_k_flat, g_k_flat;
+  logic signed [W*STATE_DIM-1:0]   v_k_flat;
+  logic signed [W*CONTROL_DIM-1:0] z_k_flat;
+
+  slack_update #(
+    .STATE_DIM(STATE_DIM),
+    .CONTROL_DIM(CONTROL_DIM),
+    .W(W)
+  ) dut (
+    .clk    (clk),
+    .reset  (reset),
+    .start  (start),
+    .x_k_flat(x_k_flat),
+    .y_k_flat(y_k_flat),
+    .u_k_flat(u_k_flat),
+    .g_k_flat(g_k_flat),
+    .x_min  (x_min),
+    .x_max  (x_max),
+    .u_min  (u_min),
+    .u_max  (u_max),
+    .v_k_flat(v_k_flat),
+    .z_k_flat(z_k_flat),
+    .done   (done)
+  );
+
+  initial clk = 0;
+  always #5 clk = ~clk;
+
+  initial begin
+    integer i;
+
+    reset = 1;
+    start = 0;
+    x_min = 10; x_max = 12;
+    u_min = 5;  u_max = 6;
+    #20;
+    reset = 0;
+
+    // Initialize inputs
+    u_k = '{1, 2, 3, 4};
+    g_k = '{4, 3, 2, 1};
+    x_k = '{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+    y_k = '{12,11,10,9,8,7,6,5,4,3,2,1};
+
+    for (i = 0; i < CONTROL_DIM; i++) begin
+      u_k_flat[i*W +: W] = u_k[i];
+      g_k_flat[i*W +: W] = g_k[i];
+    end
+    for (i = 0; i < STATE_DIM; i++) begin
+      x_k_flat[i*W +: W] = x_k[i];
+      y_k_flat[i*W +: W] = y_k[i];
+    end
+
+    #10 start = 1;
+    #10 start = 0;
+
+    wait(done);
+
+    // Unpack outputs
+    for (i = 0; i < STATE_DIM; i++) v_k[i] = v_k_flat[i*W +: W];
+    for (i = 0; i < CONTROL_DIM; i++) z_k[i] = z_k_flat[i*W +: W];
+
+    // Display results
+    $display("--- v_k (state slack) ---");
+    for (i = 0; i < STATE_DIM; i++)
+      $display("v_k[%0d] = %0d", i, v_k[i]);
+
+    $display("--- z_k (control slack) ---");
+    for (i = 0; i < CONTROL_DIM; i++)
+      $display("z_k[%0d] = %0d", i, z_k[i]);
+
+    #20 $finish;
+  end
+
+endmodule

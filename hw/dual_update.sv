@@ -5,6 +5,7 @@ module dual_update #(
     parameter STATE_DIM = 12,             // Dimension of state vector (nx)
     parameter INPUT_DIM = 4,             // Dimension of input vector (nu)
     parameter HORIZON = 30,              // Maximum MPC horizon length (N)
+
     parameter DATA_WIDTH = 16,           // 16-bit fixed point
     parameter FRAC_BITS = 8,             // Number of fractional bits for fixed point
     parameter ADDR_WIDTH = 9,            
@@ -16,33 +17,33 @@ module dual_update #(
     // ADMM variables - memory interfaces for trajectories and auxiliaries
     // State trajectory (x)
     output logic [ADDR_WIDTH-1:0] x_rdaddress,
-    input logic [DATA_WIDTH-1:0] x_data_out,
+    input logic [DATA_WIDTH_STATE-1:0] x_data_out, 
     
     // Input trajectory (u)
     output logic [ADDR_WIDTH-1:0] u_rdaddress,
-    input logic [DATA_WIDTH-1:0] u_data_out,
+    input logic [DATA_WIDTH_INPUT-1:0] u_data_out, 
     
     // Input auxiliary variables (z)
     output logic [ADDR_WIDTH-1:0] z_rdaddress,
-    input logic [DATA_WIDTH-1:0] z_data_out,
+    input logic [DATA_WIDTH_INPUT-1:0] z_data_out, 
     
     // State auxiliary variables (v)
     output logic [ADDR_WIDTH-1:0] v_rdaddress,
-    input logic [DATA_WIDTH-1:0] v_data_out,
+    input logic [DATA_WIDTH_STATE-1:0] v_data_out,
 
     // Dual variables - memory interfaces
     // Input dual variables (y)
     output logic [ADDR_WIDTH-1:0] y_rdaddress,
-    input logic [DATA_WIDTH-1:0] y_data_out,
+    input logic [DATA_WIDTH_INPUT-1:0] y_data_out, 
     output logic [ADDR_WIDTH-1:0] y_wraddress,
-    output logic [DATA_WIDTH-1:0] y_data_in,
+    output logic [DATA_WIDTH_INPUT-1:0] y_data_in,
     output logic y_wren,
     
     // State dual variables (g)
     output logic [ADDR_WIDTH-1:0] g_rdaddress,
-    input logic [DATA_WIDTH-1:0] g_data_out,
+    input logic [DATA_WIDTH_STATE-1:0] g_data_out,
     output logic [ADDR_WIDTH-1:0] g_wraddress,
-    output logic [DATA_WIDTH-1:0] g_data_in,
+    output logic [DATA_WIDTH_STATE-1:0] g_data_in,
     output logic g_wren,
 
     // Linear cost terms - memory interfaces
@@ -83,8 +84,8 @@ module dual_update #(
     input logic [DATA_WIDTH-1:0] rho,
 
     // Residual calculation outputs
-    output logic [DATA_WIDTH-1:0] pri_res_u,                           // Primal residual for inputs
-    output logic [DATA_WIDTH-1:0] pri_res_x,                           // Primal residual for states
+    output logic [DATA_WIDTH_INPUT-1:0] pri_res_u,                           // Primal residual for inputs
+    output logic [DATA_WIDTH_STATE-1:0] pri_res_x,                           // Primal residual for states
     
     // Configuration
     input logic [31:0] active_horizon,  // Current horizon length to use
@@ -111,6 +112,7 @@ module dual_update #(
     logic [31:0] write_stage;           // Tracks memory write sequencing
     
     // Temporary storage for values read from memory
+
     logic [DATA_WIDTH-1:0] temp_u;
     logic [DATA_WIDTH-1:0] temp_z;
     logic [DATA_WIDTH-1:0] temp_x;
@@ -125,9 +127,10 @@ module dual_update #(
     logic [DATA_WIDTH-1:0] temp_P;
     
     // Temporary computation variables
-    logic [DATA_WIDTH-1:0] temp_val;     // Temporary value for computations
-    logic [DATA_WIDTH-1:0] max_pri_res_u; // Maximum primal residual for inputs
-    logic [DATA_WIDTH-1:0] max_pri_res_x; // Maximum primal residual for states
+    logic [DATA_WIDTH_STATE-1:0] temp_val_state;     // Temporary value for computations //making larger for now
+    logic [DATA_WIDTH_INPUT-1:0] temp_val_input;     // Temporary value for computations //making larger for now
+    logic [DATA_WIDTH_STATE-1:0] max_pri_res_u; // Maximum primal residual for inputs
+    logic [DATA_WIDTH_INPUT-1:0] max_pri_res_x; // Maximum primal residual for states
     
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
@@ -232,24 +235,24 @@ module dual_update #(
                             end else if (state_timer % 6 == 4) begin
                                 // Stage 4: Compute y update and residual
                                 // y += u - z
-                                temp_val = temp_u - temp_z;
-                                y_data_in <= temp_y + temp_val;
-                                
+                                temp_val_input = temp_u - temp_z;
+                                y_data_in <= temp_y + temp_val_input;
+                                 
                                 // Set write address
                                 y_wraddress <= index;
                                 y_wren <= 1;
                                 
                                 // Track maximum residual (in absolute value)
-                                if (temp_val < 0) begin
-                                    temp_val = -temp_val; // Absolute value
+                                if (temp_val_input < 0) begin
+                                    temp_val_input = -temp_val_input; // Absolute value
                                 end
-                                if (temp_val > max_pri_res_u) begin
-                                    max_pri_res_u <= temp_val;
+                                if (temp_val_input > max_pri_res_u) begin
+                                    max_pri_res_u <= temp_val_input;
                                 end
                             end else if (state_timer % 6 == 0) begin
                                 // Stage 6: Advance to next element
                                 y_wren <= 0;
-                                
+                                 
                                 i <= i + 1;
                                 if (i == INPUT_DIM-1) begin
                                     i <= 0;
@@ -260,7 +263,7 @@ module dual_update #(
                             // Done updating all y values
                             read_stage <= 0;
                             y_wren <= 0;
-                            
+                             
                             // Move to next state
                             state <= UPDATE_G;
                             k <= 0;
@@ -303,24 +306,24 @@ module dual_update #(
                             end else if (state_timer % 6 == 4) begin
                                 // Stage 4: Compute g update and residual
                                 // g += x - v
-                                temp_val = temp_x - temp_v;
-                                g_data_in <= temp_g + temp_val;
-                                
+                                temp_val_state = temp_x - temp_v;
+                                g_data_in <= temp_g + temp_val_state;
+                                 
                                 // Set write address
                                 g_wraddress <= index;
                                 g_wren <= 1;
                                 
                                 // Track maximum residual (in absolute value)
-                                if (temp_val < 0) begin
-                                    temp_val = -temp_val; // Absolute value
+                                if (temp_val_state < 0) begin
+                                    temp_val_state = -temp_val_state; // Absolute value
                                 end
-                                if (temp_val > max_pri_res_x) begin
-                                    max_pri_res_x <= temp_val;
+                                if (temp_val_state > max_pri_res_x) begin
+                                    max_pri_res_x <= temp_val_state;
                                 end
                             end else if (state_timer % 6 == 0) begin
                                 // Stage 6: Advance to next element
                                 g_wren <= 0;
-                                
+                                 
                                 i <= i + 1;
                                 if (i == STATE_DIM-1) begin
                                     i <= 0;
@@ -331,7 +334,7 @@ module dual_update #(
                             // Done updating all g values
                             read_stage <= 0;
                             g_wren <= 0;
-                            
+                             
                             // Move to next state
                             state <= CALC_RESIDUALS;
                             state_timer <= 0;

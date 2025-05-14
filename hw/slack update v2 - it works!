@@ -1,0 +1,181 @@
+// Implements constraint projection for both u and x variables
+
+`timescale 1ps/1ps
+module slack_update_alex3 #(
+    parameter int STATE_DIM   = 12,     // Dimension of state vector (nx)
+    parameter int INPUT_DIM   = 4,      // Dimension of input vector (nu)
+    parameter int HORIZON     = 30,     // Maximum MPC horizon length (N)
+    parameter int DATA_WIDTH  = 16,     // Fixed-point width
+    parameter int ADDR_WIDTH  = 9       // Address width (enough for HORIZON*dim)
+) (
+    input  logic                     clk,             // Clock
+    input  logic                     rst,             // Reset (synchronous)
+    input  logic                     start,           // Start signal
+
+    // — u and y memory interface (for z-update) —
+    output logic [ADDR_WIDTH-1:0]    u_rdaddress,
+    input  logic signed [DATA_WIDTH-1:0] u_data_out,
+    output logic [ADDR_WIDTH-1:0]    y_rdaddress,
+    input  logic signed [DATA_WIDTH-1:0] y_data_out,
+
+    // — z write port —
+    output logic [ADDR_WIDTH-1:0]    z_wraddress,
+    output logic signed [DATA_WIDTH-1:0] z_data_in,
+    output logic                     z_wren,
+
+    // — x and g memory interface (for v-update) —
+    output logic [ADDR_WIDTH-1:0]    x_rdaddress,
+    input  logic signed [DATA_WIDTH-1:0] x_data_out,
+    output logic [ADDR_WIDTH-1:0]    g_rdaddress,
+    input  logic signed [DATA_WIDTH-1:0] g_data_out,
+
+    // — v write port —
+    output logic [ADDR_WIDTH-1:0]    v_wraddress,
+    output logic signed [DATA_WIDTH-1:0] v_data_in,
+    output logic                     v_wren,
+
+    // — box bounds —
+    input  wire signed [DATA_WIDTH-1:0] u_min [INPUT_DIM],
+    input  wire signed [DATA_WIDTH-1:0] u_max [INPUT_DIM],
+    input  wire signed [DATA_WIDTH-1:0] x_min [STATE_DIM],
+    input  wire signed [DATA_WIDTH-1:0] x_max [STATE_DIM],
+
+    // — active horizon (≤ HORIZON) —
+    input  logic [31:0]              active_horizon,
+
+    output logic                     done             // High when finished
+);
+
+    // States
+    typedef enum logic [1:0] {
+        S_IDLE,
+        S_PROJ_Z,
+        S_PROJ_V,
+        S_DONE
+    } state_t;
+
+    state_t state;
+    logic [31:0] k, i;
+    logic [2:0]  phase;
+    logic signed [DATA_WIDTH-1:0] temp_u, temp_y, temp_x, temp_g, temp_val;
+
+    //------------------------------------------------------------------------------  
+    // State machine
+    //------------------------------------------------------------------------------
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            state       <= S_IDLE;
+            done        <= 1'b0;
+            k           <= 0;
+            i           <= 0;
+            phase       <= 0;
+            // clear ports
+            u_rdaddress <= 0; y_rdaddress <= 0; z_wraddress <= 0; z_wren <= 0;
+            x_rdaddress <= 0; g_rdaddress <= 0; v_wraddress <= 0; v_wren <= 0;
+        end else begin
+            case (state)
+
+                S_IDLE: begin
+                    done <= 1'b0;
+                    if (start) begin
+                        state <= S_PROJ_Z;
+                        k     <= 0;
+                        i     <= 0;
+                        phase <= 0;
+                    end
+                end
+
+                //--- PROJECT Z: z = clip(u + y, u_min, u_max) ---
+                S_PROJ_Z: begin
+                    case (phase)
+                        3'd0: begin
+                            // drive read addresses
+                            u_rdaddress <= k*INPUT_DIM + i;
+                            y_rdaddress <= k*INPUT_DIM + i;
+                            phase       <= 3'd1;
+                        end
+                        3'd1: begin
+                            // capture reads
+                            temp_u <= u_data_out;
+                            temp_y <= y_data_out;
+                            phase  <= 3'd2;
+                        end
+                        3'd2: begin
+                            // compute and clip
+                            temp_val = temp_u + temp_y;
+                            if      (temp_val < u_min[i]) z_data_in <= u_min[i];
+                            else if (temp_val > u_max[i]) z_data_in <= u_max[i];
+                            else                            z_data_in <= temp_val;
+                            z_wraddress <= k*INPUT_DIM + i;
+                            z_wren      <= 1'b1;
+                            phase       <= 3'd3;
+                        end
+                        3'd3: begin
+                            // finish this element
+                            z_wren <= 1'b0;
+                            // advance indices
+                            if (i == INPUT_DIM-1) begin
+                                i <= 0;
+                                if (k == active_horizon-2) begin
+                                    // done with all z
+                                    state <= S_PROJ_V;
+                                    k     <= 0;
+                                    i     <= 0;
+                                    phase <= 0;
+                                end else begin
+                                    k <= k + 1;
+                                end
+                            end else i <= i + 1;
+                            phase <= 3'd0;
+                        end
+                    endcase
+                end
+
+                //--- PROJECT V: v = clip(x + g, x_min, x_max) ---
+                S_PROJ_V: begin
+                    case (phase)
+                        3'd0: begin
+                            x_rdaddress <= k*STATE_DIM + i;
+                            g_rdaddress <= k*STATE_DIM + i;
+                            phase       <= 3'd1;
+                        end
+                        3'd1: begin
+                            temp_x <= x_data_out;
+                            temp_g <= g_data_out;
+                            phase  <= 3'd2;
+                        end
+                        3'd2: begin
+                            temp_val = temp_x + temp_g;
+                            if      (temp_val < x_min[i]) v_data_in <= x_min[i];
+                            else if (temp_val > x_max[i]) v_data_in <= x_max[i];
+                            else                            v_data_in <= temp_val;
+                            v_wraddress <= k*STATE_DIM + i;
+                            v_wren      <= 1'b1;
+                            phase       <= 3'd3;
+                        end
+                        3'd3: begin
+                            v_wren <= 1'b0;
+                            if (i == STATE_DIM-1) begin
+                                i <= 0;
+                                if (k == active_horizon-1) begin
+                                    state <= S_DONE;
+                                end else k <= k + 1;
+                            end else i <= i + 1;
+                            phase <= 3'd0;
+                        end
+                    endcase
+                end
+
+                S_DONE: begin
+                    done  <= 1'b1;
+                    if (!start) begin
+                        state <= S_IDLE;
+                    end
+                end
+
+                default: state <= S_IDLE;
+            endcase
+        end
+    end
+
+endmodule

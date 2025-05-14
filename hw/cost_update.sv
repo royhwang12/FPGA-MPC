@@ -184,7 +184,8 @@ module cost_update #(
                         // Read values for q calculation (Q, x_ref, and v/g)
                         if (k < active_horizon && i < STATE_DIM) begin
                             // Calculate current index
-                            int index = k*STATE_DIM + i;
+                            int index;
+                            index = k*STATE_DIM + i;
                             
                             if (state_timer % 6 == 1) begin
                                 // Stage 1: Set read addresses for Q and x_ref
@@ -237,7 +238,8 @@ module cost_update #(
                         // Read values for p calculation (P, x_ref)
                         if (k < active_horizon && i < STATE_DIM) begin
                             // Calculate current index
-                            int index = k*STATE_DIM + i;
+                            int index;
+                            index = k*STATE_DIM + i;
                             
                             if (state_timer % 6 == 1) begin
                                 // Stage 1: Set read address for P and x_ref

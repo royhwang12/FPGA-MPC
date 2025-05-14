@@ -2,10 +2,11 @@
 
 `timescale 1 ps / 1 ps
 module slack_update #(
-    parameter STATE_DIM = 6,             // Dimension of state vector (nx)
-    parameter INPUT_DIM = 3,             // Dimension of input vector (nu)
+    parameter STATE_DIM = 12,             // Dimension of state vector (nx)
+    parameter INPUT_DIM = 4,             // Dimension of input vector (nu)
     parameter HORIZON = 30,              // Maximum MPC horizon length (N)
-    parameter DATA_WIDTH = 64,           
+    parameter DATA_WIDTH = 16,           // 16-bit fixed point
+    parameter FRAC_BITS = 8,             // Number of fractional bits for fixed point
     parameter ADDR_WIDTH = 9,            
 )(
     input logic clk,                     // Clock

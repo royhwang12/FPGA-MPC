@@ -40,7 +40,7 @@ module admm_solver #(
     logic start_solving;
     logic solver_done;
     logic [31:0] current_iter;
-    logic [31:0] active_horizon;
+    logic [31:0] active_horizon_reg; // INTERNAL REG ONLY
     logic converged;
     
     // Memory signals for system matrices
@@ -514,7 +514,7 @@ module admm_solver #(
         .p_wren(p_wren),
         
         // Configuration
-        .active_horizon(active_horizon),
+        .active_horizon(active_horizon_reg),
         
         .done(primal_update_done)
     );
@@ -561,7 +561,7 @@ module admm_solver #(
         .z_prev_wren(z_prev_wren),
         
         // Configuration
-        .active_horizon(active_horizon),
+        .active_horizon(active_horizon_reg),
         
         .done(slack_update_done)
     );
@@ -640,7 +640,7 @@ module admm_solver #(
         .pri_res_x(pri_res_x),
         
         // Configuration
-        .active_horizon(active_horizon),
+        .active_horizon(active_horizon_reg),
         
         .done(dual_update_done)
     );
@@ -667,7 +667,7 @@ module admm_solver #(
         .z_prev_data_out(z_prev_data_out),
         .pri_tol(pri_tol),
         .dual_tol(dual_tol),
-        .active_horizon(active_horizon),
+        .active_horizon(active_horizon_reg),
         
         // Outputs
         .dual_res(dual_res),
@@ -680,7 +680,7 @@ module admm_solver #(
         if (rst) begin
             state <= IDLE;
             current_iter <= 0;
-            active_horizon <= HORIZON;
+            active_horizon_reg <= HORIZON;
             solver_done <= 0;
             
             // Initialize control signals
@@ -800,7 +800,7 @@ module admm_solver #(
         // Control signals
         .solver_done(solver_done),
         .current_iter(current_iter),
-        .active_horizon(active_horizon),
+        .active_horizon(active_horizon_reg),
         .converged(converged),
         .start_solving(start_solving),
         

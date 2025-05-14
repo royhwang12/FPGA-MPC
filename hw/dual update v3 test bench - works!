@@ -1,0 +1,191 @@
+`timescale 1ps/1ps
+
+module tb_dual_update_alex2;
+  //--- Parameters
+  localparam STATE_DIM   = 2;
+  localparam INPUT_DIM   = 2;
+  localparam HORIZON     = 3;
+  localparam DATA_WIDTH  = 8;
+  localparam FRAC_BITS   = 0;
+  localparam ADDR_WIDTH  = 4;
+
+  //--- Clock, reset, start
+  logic clk = 0;
+  always #5 clk = ~clk;
+  logic rst, start;
+  logic [31:0] active_horizon;
+  logic [DATA_WIDTH-1:0] rho;
+
+  //--- DUT address & data ports
+  logic [ADDR_WIDTH-1:0] x_rdaddress,  u_rdaddress,  z_rdaddress,  v_rdaddress;
+  logic [ADDR_WIDTH-1:0] y_rdaddress,  g_rdaddress,  r_rdaddress,  q_rdaddress,  p_rdaddress;
+  logic [ADDR_WIDTH-1:0] y_wraddress,  g_wraddress,  r_wraddress,  q_wraddress,  p_wraddress;
+  logic [DATA_WIDTH-1:0] x_data_out,   u_data_out,   z_data_out,   v_data_out;
+  logic [DATA_WIDTH-1:0] y_data_out,   g_data_out,   r_data_out,   q_data_out,   p_data_out;
+  logic [DATA_WIDTH-1:0] y_data_in,    g_data_in,    r_data_in,    q_data_in,    p_data_in;
+  logic [ADDR_WIDTH-1:0] R_rdaddress,  Q_rdaddress,  P_rdaddress;
+  logic [DATA_WIDTH-1:0] R_data_out,   Q_data_out,   P_data_out;
+  logic y_wren, g_wren, r_wren, q_wren, p_wren;
+  logic done;
+
+  //--- Reference trajectories = 0
+  logic [DATA_WIDTH-1:0] x_ref[0:STATE_DIM-1][0:HORIZON-1];
+  logic [DATA_WIDTH-1:0] u_ref[0:INPUT_DIM-1][0:HORIZON-2];
+
+  //--- DUT instantiation
+  dual_update #(
+    .STATE_DIM(STATE_DIM),
+    .INPUT_DIM(INPUT_DIM),
+    .HORIZON(HORIZON),
+    .DATA_WIDTH(DATA_WIDTH),
+    .FRAC_BITS(FRAC_BITS),
+    .ADDR_WIDTH(ADDR_WIDTH)
+  ) dut (
+    .clk(clk), .rst(rst), .start(start),
+    // primal reads
+    .x_rdaddress(x_rdaddress), .x_data_out(x_data_out),
+    .u_rdaddress(u_rdaddress), .u_data_out(u_data_out),
+    .z_rdaddress(z_rdaddress), .z_data_out(z_data_out),
+    .v_rdaddress(v_rdaddress), .v_data_out(v_data_out),
+    // dual reads/writes
+    .y_rdaddress(y_rdaddress), .y_data_out(y_data_out),
+    .y_wraddress(y_wraddress), .y_data_in(y_data_in), .y_wren(y_wren),
+    .g_rdaddress(g_rdaddress), .g_data_out(g_data_out),
+    .g_wraddress(g_wraddress), .g_data_in(g_data_in), .g_wren(g_wren),
+    // linear-cost reads/writes
+    .r_rdaddress(r_rdaddress), .r_data_out(r_data_out),
+    .r_wraddress(r_wraddress), .r_data_in(r_data_in), .r_wren(r_wren),
+    .q_rdaddress(q_rdaddress), .q_data_out(q_data_out),
+    .q_wraddress(q_wraddress), .q_data_in(q_data_in), .q_wren(q_wren),
+    .p_rdaddress(p_rdaddress), .p_data_out(p_data_out),
+    .p_wraddress(p_wraddress), .p_data_in(p_data_in), .p_wren(p_wren),
+    // cost-matrix reads
+    .R_rdaddress(R_rdaddress), .R_data_out(R_data_out),
+    .Q_rdaddress(Q_rdaddress), .Q_data_out(Q_data_out),
+    .P_rdaddress(P_rdaddress), .P_data_out(P_data_out),
+    // refs & params
+    .x_ref(x_ref), .u_ref(u_ref),
+    .rho(rho),
+    .pri_res_u(), .pri_res_x(),
+    .active_horizon(active_horizon),
+    .done(done)
+  );
+
+  //--- Behavioral ?memories?
+  reg [DATA_WIDTH-1:0] u_mem[(HORIZON*INPUT_DIM)-1:0];
+  reg [DATA_WIDTH-1:0] z_mem[(HORIZON*INPUT_DIM)-1:0];
+  reg [DATA_WIDTH-1:0] y_mem[((HORIZON-1)*INPUT_DIM)-1:0];
+  reg [DATA_WIDTH-1:0] x_mem[(HORIZON*STATE_DIM)-1:0];
+  reg [DATA_WIDTH-1:0] v_mem[(HORIZON*STATE_DIM)-1:0];
+  reg [DATA_WIDTH-1:0] g_mem[(HORIZON*STATE_DIM)-1:0];
+  reg [DATA_WIDTH-1:0] r_mem[((HORIZON-1)*INPUT_DIM)-1:0];
+  reg [DATA_WIDTH-1:0] q_mem[((HORIZON-1)*STATE_DIM)-1:0];
+  reg [DATA_WIDTH-1:0] p_mem[(HORIZON*STATE_DIM)-1:0];
+  reg [DATA_WIDTH-1:0] R_mem[0:INPUT_DIM-1];
+  reg [DATA_WIDTH-1:0] Q_mem[0:STATE_DIM-1];
+  reg [DATA_WIDTH-1:0] P_mem[0:STATE_DIM-1];
+
+  //--- Drive DUT reads
+  always_comb begin
+    u_data_out = u_mem[u_rdaddress];
+    z_data_out = z_mem[z_rdaddress];
+    y_data_out = y_mem[y_rdaddress];
+    x_data_out = x_mem[x_rdaddress];
+    v_data_out = v_mem[v_rdaddress];
+    g_data_out = g_mem[g_rdaddress];
+    r_data_out = r_mem[r_rdaddress];
+    q_data_out = q_mem[q_rdaddress];
+    p_data_out = p_mem[p_rdaddress];
+    R_data_out = R_mem[R_rdaddress];
+    Q_data_out = Q_mem[Q_rdaddress];
+    P_data_out = P_mem[P_rdaddress];
+  end
+
+  //--- Capture DUT writes
+  always_ff @(posedge clk) begin
+    if (y_wren) y_mem[y_wraddress] <= y_data_in;
+    if (g_wren) g_mem[g_wraddress] <= g_data_in;
+    if (r_wren) r_mem[r_wraddress] <= r_data_in;
+    if (q_wren) q_mem[q_wraddress] <= q_data_in;
+    if (p_wren) p_mem[p_wraddress] <= p_data_in;
+  end
+
+initial begin
+  integer idx;
+  // Zero u_mem and z_mem
+  for (idx = 0; idx < HORIZON*INPUT_DIM; idx++) begin
+    u_mem[idx] = 0;
+    z_mem[idx] = 0;
+  end
+
+  // Zero y_mem and r_mem
+  for (idx = 0; idx < (HORIZON-1)*INPUT_DIM; idx++) begin
+    y_mem[idx] = 0;
+    r_mem[idx] = 0;
+  end
+
+  // Zero x_mem, v_mem, g_mem
+  for (idx = 0; idx < HORIZON*STATE_DIM; idx++) begin
+    x_mem[idx] = 0;
+    v_mem[idx] = 0;
+    g_mem[idx] = 0;
+  end
+
+  // Zero q_mem
+  for (idx = 0; idx < (HORIZON-1)*STATE_DIM; idx++)
+    q_mem[idx] = 0;
+
+  // Zero p_mem
+  for (idx = 0; idx < HORIZON*STATE_DIM; idx++)
+    p_mem[idx] = 0;
+    // Sample primal data
+    // u = [1,2,3,4,...], z = [0,1,1,1,...]
+    u_mem[0]=1; u_mem[1]=2; u_mem[2]=3; u_mem[3]=4;
+    z_mem[0]=0; z_mem[1]=1; z_mem[2]=1; z_mem[3]=1;
+    // x = [10,20,30,40,50,60], v = [5,15,25,35,45,55]
+    x_mem[0]=10; x_mem[1]=20; x_mem[2]=30; x_mem[3]=40; x_mem[4]=50; x_mem[5]=60;
+    v_mem[0]= 5; v_mem[1]=15; v_mem[2]=25; v_mem[3]=35; v_mem[4]=45; v_mem[5]=55;
+
+    // Cost matrices (diagonals only matter)
+    R_mem[0]=2; R_mem[1]=4;
+    Q_mem[0]=3; Q_mem[1]=5;
+    P_mem[0]=7; P_mem[1]=9;
+
+    // Zero refs
+    for (idx=0; idx<STATE_DIM; idx++)
+      for (int k=0; k<HORIZON; k++) x_ref[idx][k] = 0;
+    for (idx=0; idx<INPUT_DIM; idx++)
+      for (int k=0; k<HORIZON-1; k++) u_ref[idx][k] = 0;
+
+    // Run
+    rst = 1; start = 0; active_horizon = HORIZON; rho = 1;
+    #20 rst = 0;
+    #20 start = 1;
+    #10 start = 0;
+    wait(done);
+    #20;
+
+    //--- Check results
+    $display("\n=== y_mem (expected [1,1,2,3]) ===");
+    for (idx=0; idx<(HORIZON-1)*INPUT_DIM; idx++)
+      $display(" y_mem[%0d] = %0d", idx, $signed(y_mem[idx]));
+
+    $display("\n=== g_mem (expected all 5) ===");
+    for (idx=0; idx<HORIZON*STATE_DIM; idx++)
+      $display(" g_mem[%0d] = %0d", idx, $signed(g_mem[idx]));
+
+    $display("\n=== r_mem = y-z (expected [1,0,1,2]) ===");
+    for (idx=0; idx<(HORIZON-1)*INPUT_DIM; idx++)
+      $display(" r_mem[%0d] = %0d", idx, $signed(r_mem[idx]));
+
+    $display("\n=== q_mem = g-v (expected [0,-10,-20,-30]) ===");
+    for (idx=0; idx<(HORIZON-1)*STATE_DIM; idx++)
+      $display(" q_mem[%0d] = %0d", idx, $signed(q_mem[idx]));
+
+    $display("\n=== p_mem = g-v @ k=N-1 (expected [-40,-50]) ===");
+    for (idx=0; idx<HORIZON*STATE_DIM; idx++)
+      $display(" p_mem[%0d] = %0d", idx, $signed(p_mem[idx]));
+
+    $finish;
+  end
+endmodule

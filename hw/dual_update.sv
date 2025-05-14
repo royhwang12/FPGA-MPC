@@ -8,7 +8,7 @@ module dual_update #(
 
     parameter DATA_WIDTH = 16,           // 16-bit fixed point
     parameter FRAC_BITS = 8,             // Number of fractional bits for fixed point
-    parameter ADDR_WIDTH = 9,            
+    parameter ADDR_WIDTH = 9            
 )(
     input logic clk,                     // Clock
     input logic rst,                     // Reset
@@ -217,7 +217,8 @@ module dual_update #(
                         // Read u, z, and y values for current element
                         if (k < active_horizon-1 && i < INPUT_DIM) begin
                             // Calculate current index
-                            int index = k*INPUT_DIM + i;
+                            int index;
+                            index = k*INPUT_DIM + i;
                             
                             // Memory read/write sequence
                             if (state_timer % 6 == 1) begin
@@ -288,7 +289,8 @@ module dual_update #(
                         // Read x, v, and g values for current element
                         if (k < active_horizon && i < STATE_DIM) begin
                             // Calculate current index
-                            int index = k*STATE_DIM + i;
+                            int index;
+                            index = k*STATE_DIM + i;
                             
                             // Memory read/write sequence
                             if (state_timer % 6 == 1) begin

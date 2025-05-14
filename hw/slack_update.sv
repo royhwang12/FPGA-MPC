@@ -2,11 +2,12 @@
 
 `timescale 1 ps / 1 ps
 module slack_update #(
-    parameter STATE_DIM = 6,             // Dimension of state vector (nx)
-    parameter INPUT_DIM = 3,             // Dimension of input vector (nu)
+    parameter STATE_DIM = 12,             // Dimension of state vector (nx)
+    parameter INPUT_DIM = 4,             // Dimension of input vector (nu)
     parameter HORIZON = 30,              // Maximum MPC horizon length (N)
-    parameter DATA_WIDTH = 64,           
-    parameter ADDR_WIDTH = 9,            
+    parameter DATA_WIDTH_INPUT = 64, 
+    parameter DATA_WIDTH_STATE = 192, 
+    parameter ADDR_WIDTH = 9,
 )(
     input logic clk,                     // Clock
     input logic rst,                     // Reset
@@ -15,40 +16,40 @@ module slack_update #(
     // ADMM variables - memory interfaces for main trajectories
     // State trajectory (x)
     output logic [ADDR_WIDTH-1:0] x_rdaddress,
-    input logic [DATA_WIDTH-1:0] x_data_out,
+    input logic [DATA_WIDTH_INPUT-1:0] x_data_out, // x uses DATA_WIDTH_INPUT
     
     // Input trajectory (u)
     output logic [ADDR_WIDTH-1:0] u_rdaddress,
-    input logic [DATA_WIDTH-1:0] u_data_out,
+    input logic [DATA_WIDTH_STATE-1:0] u_data_out, // u uses DATA_WIDTH_STATE
     
     // Input dual variables (y)
     output logic [ADDR_WIDTH-1:0] y_rdaddress,
-    input logic [DATA_WIDTH-1:0] y_data_out,
+    input logic [DATA_WIDTH_STATE-1:0] y_data_out, // y uses DATA_WIDTH_STATE
     
     // State dual variables (g)
     output logic [ADDR_WIDTH-1:0] g_rdaddress,
-    input logic [DATA_WIDTH-1:0] g_data_out,
+    input logic [DATA_WIDTH_INPUT-1:0] g_data_out, // g uses DATA_WIDTH_INPUT
 
     // Bounds
-    input logic [DATA_WIDTH-1:0] u_min [INPUT_DIM],                  // Minimum input bounds
-    input logic [DATA_WIDTH-1:0] u_max [INPUT_DIM],                  // Maximum input bounds
-    input logic [DATA_WIDTH-1:0] x_min [STATE_DIM],                  // Minimum state bounds
-    input logic [DATA_WIDTH-1:0] x_max [STATE_DIM],                  // Maximum state bounds
+    input logic [DATA_WIDTH_INPUT-1:0] u_min [INPUT_DIM],                  // Minimum input bounds
+    input logic [DATA_WIDTH_INPUT-1:0] u_max [INPUT_DIM],                  // Maximum input bounds
+    input logic [DATA_WIDTH_STATE-1:0] x_min [STATE_DIM],                  // Minimum state bounds
+    input logic [DATA_WIDTH_STATE-1:0] x_max [STATE_DIM],                  // Maximum state bounds
 
     // Output projected values - memory interfaces
     // Input auxiliary variables (z)
     output logic [ADDR_WIDTH-1:0] z_wraddress,
-    output logic [DATA_WIDTH-1:0] z_data_in,
+    output logic [DATA_WIDTH_STATE-1:0] z_data_in, // z uses DATA_WIDTH_STATE
     output logic z_wren,
     
     // State auxiliary variables (v)
     output logic [ADDR_WIDTH-1:0] v_wraddress,
-    output logic [DATA_WIDTH-1:0] v_data_in,
+    output logic [DATA_WIDTH_INPUT-1:0] v_data_in, // v uses DATA_WIDTH_INPUT
     output logic v_wren,
     
     // Previous z values for residuals
     output logic [ADDR_WIDTH-1:0] z_prev_wraddress,
-    output logic [DATA_WIDTH-1:0] z_prev_data_in,
+    output logic [DATA_WIDTH_STATE-1:0] z_prev_data_in, // z_prev uses DATA_WIDTH_STATE
     output logic z_prev_wren,
     
     // Configuration
@@ -75,14 +76,15 @@ module slack_update #(
     logic [31:0] write_stage;            // Tracks memory write sequencing
     
     // Temporary storage for values read from memory
-    logic [DATA_WIDTH-1:0] temp_u;
-    logic [DATA_WIDTH-1:0] temp_y;
-    logic [DATA_WIDTH-1:0] temp_x;
-    logic [DATA_WIDTH-1:0] temp_g;
-    logic [DATA_WIDTH-1:0] temp_z;        // For saving previous z value
+    logic [DATA_WIDTH_INPUT-1:0] temp_u; // u uses DATA_WIDTH_INPUT
+    logic [DATA_WIDTH_STATE-1:0] temp_y; // y uses DATA_WIDTH_STATE
+    logic [DATA_WIDTH_INPUT-1:0] temp_x; // x uses DATA_WIDTH_INPUT
+    logic [DATA_WIDTH_INPUT-1:0] temp_g; // g uses DATA_WIDTH_INPUT
+    logic [DATA_WIDTH_STATE-1:0] temp_z; // z uses DATA_WIDTH_STATE, for saving previous z value
     
     // Temporary computation variables
-    logic [DATA_WIDTH-1:0] temp_val;    // Temporary value for computations
+    logic [DATA_WIDTH_STATE-1:0] temp_val_state;     // Temporary value for computations (for state)
+    logic [DATA_WIDTH_INPUT-1:0] temp_val_input;     // Temporary value for computations (for input)
     
     // State machine implementation
     always_ff @(posedge clk or posedge rst) begin
@@ -218,15 +220,15 @@ module slack_update #(
                                 temp_y <= y_data_out;
                             } else if (state_timer % 5 == 4) {
                                 // Calculate z = proj(u + y)
-                                temp_val = temp_u + temp_y; // (note: rho=1 in simplified version)
+                                temp_val_input = temp_u + temp_y; // (note: rho=1 in simplified version)
                                 
                                 // Project onto bounds
-                                if (temp_val < u_min[i]) begin
+                                if (temp_val_input < u_min[i]) begin
                                     z_data_in <= u_min[i];
-                                end else if (temp_val > u_max[i]) begin
+                                end else if (temp_val_input > u_max[i]) begin
                                     z_data_in <= u_max[i];
                                 end else begin
-                                    z_data_in <= temp_val;
+                                    z_data_in <= temp_val_input;
                                 end
                                 
                                 // Set write address
@@ -264,15 +266,15 @@ module slack_update #(
                         int dim = i % STATE_DIM; // Dimension
                         
                         // Projection operation
-                        temp_val = x[i] + g[i]; // x[k*STATE_DIM + dim] + g[k*STATE_DIM + dim]
+                        temp_val_state = x[i] + g[i]; // x[k*STATE_DIM + dim] + g[k*STATE_DIM + dim]
                         
                         // Clip to bounds
-                        if (temp_val < x_min[dim]) begin
+                        if (temp_val_state < x_min[dim]) begin
                             v_data_in <= x_min[dim];
-                        end else if (temp_val > x_max[dim]) begin
+                        end else if (temp_val_state > x_max[dim]) begin
                             v_data_in <= x_max[dim];
                         end else begin
-                            v_data_in <= temp_val;
+                            v_data_in <= temp_val_state;
                         end
                         
                         // Set write address

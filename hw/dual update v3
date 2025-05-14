@@ -249,7 +249,7 @@ module dual_update_alex2 #(
                                 if (temp_val > max_pri_res_u) begin
                                     max_pri_res_u <= temp_val;
                                 end
-/*
+
                             end else if (state_timer % 6 == 0) begin
                                 // Stage 6: Advance to next element
                                 y_wren <= 0;
@@ -260,19 +260,7 @@ module dual_update_alex2 #(
                                     k <= k + 1;
                                 end
                             end
-*/
-else if (state_timer % 6 == 0) begin
-  // Stage 6: Advance to next element (cleanly)
-  y_wren <= 0;
-  if (i == INPUT_DIM-1) begin
-    // we just finished the last column → wrap to next row
-    i <= 0;       
-    k <= k + 1;  
-  end else begin
-    // still in the same row → just step the column index
-    i <= i + 1;
-  end
-end
+
 
 
 

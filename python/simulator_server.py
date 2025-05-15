@@ -5,10 +5,12 @@ import struct
 import time
 import numpy as np
 import argparse
+import os
 from quadrotor import QuadrotorDynamics
+from visualizer_urdf import URDFQuadrotorVisualizer
 
 class QuadrotorSimulatorServer:
-    def __init__(self, host='0.0.0.0', port=12345, client_host='127.0.0.1', client_port=12346, simulator_hz=50.0):
+    def __init__(self, host='0.0.0.0', port=12345, client_host='127.0.0.1', client_port=12346, simulator_hz=50.0, visualization=True, urdf_path="drone.urdf", mesh_dir="/home/alex/a2r/fpga-mpc/main-repo/python"):
         self.host = host
         self.port = port
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -33,6 +35,17 @@ class QuadrotorSimulatorServer:
         
         # Get hover thrust from QuadrotorDynamics parameters
         self.uhover = self.quad.hover_thrust
+        
+        # Initialize visualizer if requested
+        self.visualization = visualization
+        if self.visualization:
+            # Use URDF visualizer if a URDF path was provided, otherwise use the default
+            self.visualizer = URDFQuadrotorVisualizer(urdf_path=urdf_path, mesh_dir=mesh_dir, auto_open_browser=True)
+            print("3D visualization started - browser window should open automatically")
+            if urdf_path:
+                print(f"Using URDF model from: {urdf_path}")
+            else:
+                print("Using default quadrotor model")
         
         print(f"Simulator server initialized on {host}:{port}")
         print(f"Running at {simulator_hz} Hz (dt = {self.dt})")
@@ -94,6 +107,15 @@ class QuadrotorSimulatorServer:
         # Apply the dynamics using RK4 integration
         self.x = self.quad.dynamics_rk4(self.x, u, dt=self.dt)
         
+        # Update visualization if enabled
+        if self.visualization:
+            # Extract position and orientation for visualization
+            position = self.x[0:3]
+            quaternion = self.x[3:7] / np.linalg.norm(self.x[3:7])  # Normalize quaternion
+            
+            # Update the visualizer
+            self.visualizer.update_quadrotor_state(position, quaternion)
+        
     def run(self):
         """Main simulation loop"""
         print("Starting simulator server. Press Ctrl+C to stop.")
@@ -149,6 +171,12 @@ if __name__ == "__main__":
                         help="Client port")
     parser.add_argument("--hz", type=float, default=50.0,
                         help="Simulation frequency in Hz")
+    parser.add_argument("--no-viz", action="store_true", 
+                        help="Disable visualization")
+    parser.add_argument("--urdf", type=str, default=None,
+                        help="Path to URDF file for visualization")
+    parser.add_argument("--mesh-dir", type=str, default=None,
+                        help="Path to directory containing mesh files")
     
     args = parser.parse_args()
     
@@ -157,7 +185,8 @@ if __name__ == "__main__":
         port=args.port,
         client_host=args.client_host,
         client_port=args.client_port,
-        simulator_hz=args.hz
+        simulator_hz=args.hz,
+        visualization=not args.no_viz
     )
     
     server.run()

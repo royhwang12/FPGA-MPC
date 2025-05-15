@@ -1,0 +1,27 @@
+{ "" "" "" "Verilog HDL Implicit Net warning at hps_sdram_pll.sv(168): created implicit net for \"pll_dr_clk\"" {  } {  } 0 10236 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL or VHDL warning at hps_sdram_pll.sv(168): object \"pll_dr_clk\" assigned a value but never read" {  } {  } 0 10036 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Output port \"pll_locked\" at hps_sdram_pll.sv(91) has no driver" {  } {  } 0 10034 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL warning at hps_sdram_p0_acv_hard_memphy.v(420): object reset_n_seq_clk used but never assigned" {  } {  } 0 10858 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Elaborating entity \"hps_sdram_p0_acv_hard_memphy\" for hierarchy \"soc_system:soc_system0\|soc_system_hps_0:hps_0\|soc_system_hps_0_hps_io:hps_io\|soc_system_hps_0_hps_io_border:border\|hps_sdram:hps_sdram_inst\|hps_sdram_p0:p0\|hps_sdram_p0_acv_hard_memphy:umemphy\"" {  } {  } 0 12128 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL assignment warning at hps_sdram_p0_acv_hard_memphy.v(557): truncated value with size 4 to match size of target (1)" {  } {  } 0 10230 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Net \"reset_n_seq_clk\" at hps_sdram_p0_acv_hard_memphy.v(420) has no driver or initial value, using a default initial value '0'" {  } {  } 0 10030 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Output port \"ctl_reset_export_n\" at hps_sdram_p0_acv_hard_memphy.v(222) has no driver" {  } {  } 0 10034 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL or VHDL warning at hps_sdram_p0_acv_ldc.v(45): object \"phy_clk_dq\" assigned a value but never read" {  } {  } 0 10036 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL or VHDL warning at hps_sdram_p0_acv_ldc.v(47): object \"phy_clk_dqs_2x\" assigned a value but never read" {  } {  } 0 10036 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL assignment warning at altera_mem_if_hard_memory_controller_top_cyclonev.sv(1166): truncated value with size 320 to match size of target (1)" {  } {  } 0 10230 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL assignment warning at altera_mem_if_hard_memory_controller_top_cyclonev.sv(1167): truncated value with size 320 to match size of target (1)" {  } {  } 0 10230 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL assignment warning at altera_mem_if_hard_memory_controller_top_cyclonev.sv(1168): truncated value with size 320 to match size of target (1)" {  } {  } 0 10230 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL assignment warning at altera_mem_if_hard_memory_controller_top_cyclonev.sv(1169): truncated value with size 320 to match size of target (1)" {  } {  } 0 10230 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL assignment warning at altera_mem_if_hard_memory_controller_top_cyclonev.sv(1170): truncated value with size 320 to match size of target (1)" {  } {  } 0 10230 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL assignment warning at altera_mem_if_hard_memory_controller_top_cyclonev.sv(1171): truncated value with size 320 to match size of target (1)" {  } {  } 0 10230 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL assignment warning at altera_merlin_address_alignment.sv(155): truncated value with size 4 to match size of target (2)" {  } {  } 0 10230 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL assignment warning at altera_merlin_address_alignment.sv(259): truncated value with size 23 to match size of target (21)" {  } {  } 0 10230 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL or VHDL warning at altera_merlin_width_adapter.sv(283): object \"in_write\" assigned a value but never read" {  } {  } 0 10036 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL or VHDL warning at altera_merlin_width_adapter.sv(742): object \"aligned_addr\" assigned a value but never read" {  } {  } 0 10036 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL or VHDL warning at altera_merlin_width_adapter.sv(743): object \"aligned_byte_cnt\" assigned a value but never read" {  } {  } 0 10036 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL Always Construct warning at altera_merlin_width_adapter.sv(459): inferring latch(es) for variable \"data_reg\", which holds its previous value in one or more paths through the always construct" {  } {  } 0 10240 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Verilog HDL Always Construct warning at altera_merlin_width_adapter.sv(459): inferring latch(es) for variable \"byteen_reg\", which holds its previous value in one or more paths through the always construct" {  } {  } 0 10240 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Output port \"ddio_phy_dqdin\[179..140\]\" at hps_sdram_p0_acv_hard_io_pads.v(191) has no driver" {  } {  } 0 10034 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Output port \"ddio_phy_dqdin\[107..104\]\" at hps_sdram_p0_acv_hard_io_pads.v(191) has no driver" {  } {  } 0 10034 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Output port \"ddio_phy_dqdin\[71..68\]\" at hps_sdram_p0_acv_hard_io_pads.v(191) has no driver" {  } {  } 0 10034 "" 0 0 "Design Software" 0 -1 0 ""}
+{ "" "" "" "Output port \"ddio_phy_dqdin\[35..32\]\" at hps_sdram_p0_acv_hard_io_pads.v(191) has no driver" {  } {  } 0 10034 "" 0 0 "Design Software" 0 -1 0 ""}
